@@ -12,7 +12,7 @@ This binary is available on [crates.io](https://crates.io/crates/imessage-export
 
 `cargo install imessage-exporter` is the best way to install the app for normal use.
 
-<details><summary>Uninstall steps</summary><p><pre>% cargo uninstall imessage-exporter</pre></p></details>
+<details><summary>Uninstall steps</summary><p><pre>$ cargo uninstall imessage-exporter</pre></p></details>
 
 ### Homebrew
 
@@ -20,13 +20,13 @@ This binary is available via [`brew`](https://formulae.brew.sh/formula/imessage-
 
 `brew install imessage-exporter` will install the app, but it may not be up to date with the latest release.
 
-<details><summary>Uninstall steps</summary><p><pre>% brew uninstall imessage-exporter</pre></p></details>
+<details><summary>Uninstall steps</summary><p><pre>$ brew uninstall imessage-exporter</pre></p></details>
 
 ### Prebuilt Binaries
 
 The [releases page](https://github.com/ReagentX/imessage-exporter/releases) provides prebuilt binaries for both Apple Silicon and Intel-based Macs.
 
-<details><summary>Uninstall steps</summary><p><pre>% rm path/to/imessage-exporter-binary</pre></p></details>
+<details><summary>Uninstall steps</summary><p><pre>$ rm path/to/imessage-exporter-binary</pre></p></details>
 
 ### Installing manually
 
@@ -82,6 +82,11 @@ The [releases page](https://github.com/ReagentX/imessage-exporter/releases) prov
         
 -m, --custom-name <custom-name>
         Specify an optional custom name for the database owner's messages in exports
+        Conflicts with --use-caller-id
+        
+-i, --use-caller-id
+        Use the database owner's caller ID in exports instead of "Me"
+        Conflicts with --custom-name
         
 -b, --ignore-disk-warning
         Bypass the disk space check when exporting data
@@ -98,37 +103,37 @@ The [releases page](https://github.com/ReagentX/imessage-exporter/releases) prov
 Export as `html` and copy attachments in web-compatible formats from the default iMessage Database location to your home directory:
 
 ```zsh
-% imessage-exporter -f html -c compatible
+$ imessage-exporter -f html -c compatible
 ```
 
 Export as `txt` and copy attachments in their original formats from the default iMessage Database location to a new folder in the current working directory called `output`:
 
 ```zsh
-% imessage-exporter -f txt -o output -c efficient
+$ imessage-exporter -f txt -o output -c efficient
 ```
 
 Export as `txt` from the an unencrypted iPhone backup located at `~/iphone_backup_latest` to a new folder in the current working directory called `backup_export`:
 
 ```zsh
-% imessage-exporter -f txt -p ~/iphone_backup_latest -a iOS -o backup_export
+$ imessage-exporter -f txt -p ~/iphone_backup_latest -a iOS -o backup_export
 ```
 
 Export as `html` from `/Volumes/external/chat.db` to `/Volumes/external/export` without copying attachments:
 
 ```zsh
-% imessage-exporter -f html -c disabled -p /Volumes/external/chat.db -o /Volumes/external/export
+$ imessage-exporter -f html -c disabled -p /Volumes/external/chat.db -o /Volumes/external/export
 ```
 
 Export as `html` from `/Volumes/external/chat.db` to `/Volumes/external/export` with attachments in `/Volumes/external/Attachments`:
 
 ```zsh
-% imessage-exporter -f html -c efficient -p /Volumes/external/chat.db -r /Volumes/external/Attachments -o /Volumes/external/export 
+$ imessage-exporter -f html -c efficient -p /Volumes/external/chat.db -r /Volumes/external/Attachments -o /Volumes/external/export 
 ```
 
 Export messages from `2020-01-01` to `2020-12-31` as `txt` from the default macOS iMessage Database location to `~/export-2020`:
 
 ```zsh
-% imessage-exporter -f txt -o ~/export-2020 -s 2020-01-01 -e 2021-01-01 -a macOS
+$ imessage-exporter -f txt -o ~/export-2020 -s 2020-01-01 -e 2021-01-01 -a macOS
 ```
 
 ## Features

@@ -13,15 +13,25 @@ use crate::{
 /// Representation of Apple's [`CLPlacemark`](https://developer.apple.com/documentation/corelocation/clplacemark) object
 #[derive(Debug, PartialEq, Eq, Default)]
 pub struct Placemark<'a> {
+    /// The name of the placemark
     pub name: Option<&'a str>,
+    /// The full address formatted associated with the placemark
     pub address: Option<&'a str>,
+    /// The state or province associated with the placemark
     pub state: Option<&'a str>,
+    /// The city associated with the placemark
     pub city: Option<&'a str>,
+    /// The abbreviated country or region name
     pub iso_country_code: Option<&'a str>,
+    /// The postal code associated with the placemark
     pub postal_code: Option<&'a str>,
+    /// The name of the country or region associated with the placemark
     pub country: Option<&'a str>,
+    /// The street associated with the placemark
     pub street: Option<&'a str>,
+    /// Additional administrative area information for the placemark
     pub sub_administrative_area: Option<&'a str>,
+    /// Additional city-level information for the placemark
     pub sub_locality: Option<&'a str>,
 }
 
@@ -67,7 +77,7 @@ pub struct PlacemarkMessage<'a> {
     pub original_url: Option<&'a str>,
     /// The full street address of the location
     pub place_name: Option<&'a str>,
-    /// The short description of the app in the App Store
+    /// [Placemark] data for the specified location
     pub placemark: Placemark<'a>,
 }
 

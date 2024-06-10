@@ -1,10 +1,10 @@
 /*!
  Contains date parsing functions for iMessage dates.
 
- Dates are stored as nanosecond-precision unix timestamps with an epoch of `1/1/2001 00:00:00` in the local time zone.
+ Most dates are stored as nanosecond-precision unix timestamps with an epoch of `1/1/2001 00:00:00` in the local time zone.
 */
 
-use chrono::{DateTime, Duration, Local, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, Duration, Local, TimeZone, Utc};
 
 use crate::error::message::MessageError;
 
@@ -26,8 +26,9 @@ pub fn get_offset() -> i64 {
 /// This is used to create date data for anywhere dates are stored in the table, including
 /// `PLIST` payloads or [`streamtyped`](crate::util::streamtyped) data.
 pub fn get_local_time(date_stamp: &i64, offset: &i64) -> Result<DateTime<Local>, MessageError> {
-    let utc_stamp = NaiveDateTime::from_timestamp_opt((date_stamp / TIMESTAMP_FACTOR) + offset, 0)
-        .ok_or(MessageError::InvalidTimestamp(*date_stamp))?;
+    let utc_stamp = DateTime::from_timestamp((date_stamp / TIMESTAMP_FACTOR) + offset, 0)
+        .ok_or(MessageError::InvalidTimestamp(*date_stamp))?
+        .naive_utc();
     Ok(Local.from_utc_datetime(&utc_stamp))
 }
 

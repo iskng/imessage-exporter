@@ -134,7 +134,9 @@ impl Diagnostic for ChatToHandle {
             .map_err(TableError::ChatToHandle)?;
         let mut unique_chats_from_messages: HashSet<i32> = HashSet::new();
         statement_message_chat_rows.into_iter().for_each(|row| {
-            unique_chats_from_messages.insert(row.unwrap());
+            if let Ok(row) = row {
+                unique_chats_from_messages.insert(row);
+            }
         });
 
         // Get the Chat IDs that are associated with handles
@@ -146,7 +148,9 @@ impl Diagnostic for ChatToHandle {
             .map_err(TableError::ChatToHandle)?;
         let mut unique_chats_from_handles: HashSet<i32> = HashSet::new();
         statement_handle_chat_rows.into_iter().for_each(|row| {
-            unique_chats_from_handles.insert(row.unwrap());
+            if let Ok(row) = row {
+                unique_chats_from_handles.insert(row);
+            }
         });
 
         done_processing();
@@ -156,7 +160,8 @@ impl Diagnostic for ChatToHandle {
             .difference(&unique_chats_from_handles)
             .count();
         if chats_with_no_handles > 0 {
-            println!("\rChats with no handles: {chats_with_no_handles:?}");
+            println!("Thread diagnostic data:");
+            println!("    Chats with no handles: {chats_with_no_handles:?}");
         }
 
         Ok(())

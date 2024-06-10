@@ -20,15 +20,18 @@ fn main() {
     if let Err(why) = &options {
         eprintln!("{why}");
     } else {
-        match Config::new(options.unwrap()) {
-            Ok(app) => {
-                if let Err(why) = app.start() {
-                    eprintln!("Unable to start: {why}");
+        match options {
+            Ok(options) => match Config::new(options) {
+                Ok(app) => {
+                    if let Err(why) = app.start() {
+                        eprintln!("Unable to start: {why}");
+                    }
                 }
-            }
-            Err(why) => {
-                eprintln!("Unable to launch: {why}");
-            }
+                Err(why) => {
+                    eprintln!("Invalid configuration: {why}");
+                }
+            },
+            Err(why) => eprintln!("Invalid command line options: {why}"),
         }
     }
 }

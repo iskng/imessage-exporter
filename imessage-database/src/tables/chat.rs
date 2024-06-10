@@ -16,7 +16,9 @@ use crate::{
 pub struct Chat {
     pub rowid: i32,
     pub chat_identifier: String,
+    /// The service the chat used, i.e. iMessage, SMS, IRC, etc.
     pub service_name: Option<String>,
+    /// Optional custom name created created for the chat
     pub display_name: Option<String>,
 }
 
@@ -80,13 +82,15 @@ impl Cacheable for Chat {
 }
 
 impl Chat {
+    /// Generate a name for a chat, falling back to the default if a custom one is not set
     pub fn name(&self) -> &str {
-        match &self.display_name() {
+        match self.display_name() {
             Some(name) => name,
             None => &self.chat_identifier,
         }
     }
 
+    /// Get the current display name for the chat, if it exists.
     pub fn display_name(&self) -> Option<&str> {
         match &self.display_name {
             Some(name) => {

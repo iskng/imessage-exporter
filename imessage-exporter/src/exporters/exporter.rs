@@ -49,6 +49,8 @@ pub(super) trait Writer<'a> {
     fn format_announcement(&self, msg: &'a Message) -> String;
     /// Format a `SharePlay` message
     fn format_shareplay(&self) -> &str;
+    /// Format a legacy Shared Location message
+    fn format_shared_location(&self, msg: &'a Message) -> &str;
     /// Format an edited message
     fn format_edited(&self, msg: &'a Message, indent: &str) -> Result<String, MessageError>;
     fn write_to_file(file: &Path, text: &str);

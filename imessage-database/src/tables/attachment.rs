@@ -18,9 +18,11 @@ use crate::{
         table::{Table, ATTACHMENT},
     },
     util::{
+        dates::TIMESTAMP_FACTOR,
         dirs::home,
         output::{done_processing, processing},
         platform::Platform,
+        query_context::QueryContext,
         size::format_file_size,
     },
 };
@@ -28,7 +30,7 @@ use crate::{
 /// The default root directory for iMessage attachment data
 pub const DEFAULT_ATTACHMENT_ROOT: &str = "~/Library/Messages/Attachments";
 
-/// Represents the MIME type of a message's attachment data
+/// Represents the [MIME type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_Types) of a message's attachment data
 ///
 /// The interior `str` contains the subtype, i.e. `x-m4a` for `audio/x-m4a`
 #[derive(Debug, PartialEq, Eq)]
@@ -46,13 +48,20 @@ pub enum MediaType<'a> {
 #[derive(Debug)]
 pub struct Attachment {
     pub rowid: i32,
+    /// The path to the file on disk
     pub filename: Option<String>,
+    /// The [Uniform Type Identifier](https://developer.apple.com/library/archive/documentation/FileManagement/Conceptual/understanding_utis/understand_utis_intro/understand_utis_intro.html)
     pub uti: Option<String>,
+    /// String representation of the file's MIME type
     pub mime_type: Option<String>,
+    /// The name of the file when sent or received
     pub transfer_name: Option<String>,
+    /// The total amount of data transferred over the network (not necessarily the size of the file)
     pub total_bytes: u64,
+    /// `true` if the attachment was a sticker, else `false`
     pub is_sticker: bool,
     pub hide_attachment: i32,
+    /// Auxiliary data to denote that an attachment has been copied
     pub copied_path: Option<PathBuf>,
 }
 
@@ -223,10 +232,35 @@ impl Attachment {
     }
 
     /// Get the total attachment bytes referenced in the table
-    pub fn get_total_attachment_bytes(db: &Connection) -> Result<u64, TableError> {
-        let mut bytes_query = db
-            .prepare(&format!("SELECT SUM(total_bytes) FROM {ATTACHMENT}"))
-            .map_err(TableError::Attachment)?;
+    pub fn get_total_attachment_bytes(
+        db: &Connection,
+        context: &QueryContext,
+    ) -> Result<u64, TableError> {
+        let mut bytes_query = if context.has_filters() {
+            let mut statement = format!("SELECT SUM(total_bytes) FROM {ATTACHMENT} a");
+
+            if context.has_filters() {
+                statement.push_str(" WHERE ");
+                if let Some(start) = context.start {
+                    statement.push_str(&format!(
+                        "    a.created_date >= {}",
+                        start / TIMESTAMP_FACTOR
+                    ));
+                }
+                if let Some(end) = context.end {
+                    if !statement.is_empty() {
+                        statement.push_str(" AND ");
+                    }
+                    statement
+                        .push_str(&format!("    a.created_date <= {}", end / TIMESTAMP_FACTOR));
+                }
+            }
+
+            db.prepare(&statement).map_err(TableError::Attachment)?
+        } else {
+            db.prepare(&format!("SELECT SUM(total_bytes) FROM {ATTACHMENT}"))
+                .map_err(TableError::Attachment)?
+        };
 
         bytes_query
             .query_row([], |r| r.get(0))
@@ -334,7 +368,8 @@ impl Attachment {
             })
             .count();
 
-        let total_bytes = Attachment::get_total_attachment_bytes(db).unwrap_or(0);
+        let total_bytes =
+            Attachment::get_total_attachment_bytes(db, &QueryContext::default()).unwrap_or(0);
 
         done_processing();
 

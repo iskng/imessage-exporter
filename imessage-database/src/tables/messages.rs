@@ -75,28 +75,58 @@ pub enum Service<'a> {
 pub struct Message {
     pub rowid: i32,
     pub guid: String,
+    /// The text of the message, which may require calling [`gen_text()`](crate::tables::messages::Message::gen_text) to populate
     pub text: Option<String>,
+    /// The service the message was sent from
     pub service: Option<String>,
+    /// The ID of the person who sent the message
     pub handle_id: Option<i32>,
+    pub destination_caller_id: Option<String>,
+    /// The content of the Subject field
     pub subject: Option<String>,
+    /// The date the message was written to the database
     pub date: i64,
+    /// The date the message was read
     pub date_read: i64,
+    /// The date a message was delivered
     pub date_delivered: i64,
+    /// `true` if the database owner sent the message, else `false`
     pub is_from_me: bool,
+    /// `true` if the message was read by the recipient, else `false`
     pub is_read: bool,
+    /// Intermediate data for determining the [`variant`](crate::message_types::variants) of a message
     pub item_type: i32,
+    /// Optional handle for the recipient of a message that includes shared content
+    pub other_handle: i32,
+    /// Boolean determining whether some shared data is active or inactive, i.e. shared location being enabled or disabled
+    pub share_status: bool,
+    /// Boolean determining the direction shared data was sent; `false` indicates it was sent from the database owner, `true` indicates it was sent to the database owner
+    pub share_direction: bool,
+    /// If the message updates the [`display_name`](crate::tables::chat::Chat::display_name) of the chat
     pub group_title: Option<String>,
+    /// If the message modified for a group, this will be nonzero
     pub group_action_type: i32,
+    /// The message GUID of a message associated with this one
     pub associated_message_guid: Option<String>,
+    /// Intermediate data for determining the [`variant`](crate::message_types::variants) of a message
     pub associated_message_type: Option<i32>,
+    /// The [bundle ID](https://developer.apple.com/help/app-store-connect/reference/app-bundle-information) of the app that generated the [`AppMessage`](crate::message_types::app::AppMessage)
     pub balloon_bundle_id: Option<String>,
+    /// Intermediate data for determining the [`expressive`](crate::message_types::expressives) of a message
     pub expressive_send_style_id: Option<String>,
+    /// Indicates the first message in a thread of replies in [`get_replies()`](crate::tables::messages::Message::get_replies)
     pub thread_originator_guid: Option<String>,
+    /// Indicates the part of a message a reply is pointing to
     pub thread_originator_part: Option<String>,
+    /// The date the message was most recently edited
     pub date_edited: i64,
+    /// The [`identifier`](crate::tables::chat::Chat::chat_identifier) of the chat the message belongs to
     pub chat_id: Option<i32>,
+    /// The number of attached files included in the message
     pub num_attachments: i32,
+    /// The [`identifier`](crate::tables::chat::Chat::chat_identifier) of the chat the message was deleted from
     pub deleted_from: Option<i32>,
+    /// The number of replies to the message
     pub num_replies: i32,
 }
 
@@ -108,6 +138,7 @@ impl Table for Message {
             text: row.get("text").unwrap_or(None),
             service: row.get("service").unwrap_or(None),
             handle_id: row.get("handle_id").unwrap_or(None),
+            destination_caller_id: row.get("destination_caller_id").unwrap_or(None),
             subject: row.get("subject").unwrap_or(None),
             date: row.get("date")?,
             date_read: row.get("date_read").unwrap_or(0),
@@ -115,6 +146,9 @@ impl Table for Message {
             is_from_me: row.get("is_from_me")?,
             is_read: row.get("is_read")?,
             item_type: row.get("item_type").unwrap_or_default(),
+            other_handle: row.get("other_handle").unwrap_or_default(),
+            share_status: row.get("share_status").unwrap_or(false),
+            share_direction: row.get("share_direction").unwrap_or(false),
             group_title: row.get("group_title").unwrap_or(None),
             group_action_type: row.get("group_action_type").unwrap_or(0),
             associated_message_guid: row.get("associated_message_guid").unwrap_or(None),
@@ -519,6 +553,21 @@ impl Message {
         self.item_type == 6
     }
 
+    /// `true` if the message was sent by the database owner, else `false`
+    pub fn is_from_me(&self) -> bool {
+        self.is_from_me || self.other_handle != 0 && !self.share_direction
+    }
+
+    /// `true` if the message indicates a user started sharing their location, else `false`
+    pub fn started_sharing_location(&self) -> bool {
+        self.item_type == 4 && self.group_action_type == 0 && !self.share_status
+    }
+
+    /// `true` if the message indicates a user stopped sharing their location, else `false`
+    pub fn stopped_sharing_location(&self) -> bool {
+        self.item_type == 4 && self.group_action_type == 0 && self.share_status
+    }
+
     /// `true` if the message was deleted and is recoverable, else `false`
     ///
     /// Messages removed by deleting an entire conversation or by deleting a single message
@@ -562,7 +611,7 @@ impl Message {
         let mut statement = if context.has_filters() {
             db.prepare(&format!(
                 "SELECT COUNT(*) FROM {MESSAGE} as m {}",
-                context.generate_filter_statement()
+                context.generate_filter_statement("m.date")
             ))
             .map_err(TableError::Messages)?
         } else {
@@ -597,7 +646,7 @@ impl Message {
             return Self::get(db);
         }
 
-        let filters = context.generate_filter_statement();
+        let filters = context.generate_filter_statement("m.date");
 
         // If database has `thread_originator_guid`, we can parse replies, otherwise default to 0
         Ok(db.prepare(&format!(
@@ -966,6 +1015,7 @@ mod tests {
             text: None,
             service: Some("iMessage".to_string()),
             handle_id: Some(i32::default()),
+            destination_caller_id: None,
             subject: None,
             date: i64::default(),
             date_read: i64::default(),
@@ -973,6 +1023,9 @@ mod tests {
             is_from_me: false,
             is_read: false,
             item_type: 0,
+            other_handle: 0,
+            share_status: false,
+            share_direction: false,
             group_title: None,
             group_action_type: 0,
             associated_message_guid: None,

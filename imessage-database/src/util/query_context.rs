@@ -106,18 +106,18 @@ impl QueryContext {
     ///
     /// let mut context = QueryContext::default();
     /// context.set_start("2023-01-01");
-    /// let filters = context.generate_filter_statement();
+    /// let filters = context.generate_filter_statement("field_name");
     /// ```
-    pub fn generate_filter_statement(&self) -> String {
+    pub fn generate_filter_statement(&self, field: &str) -> String {
         let mut filters = String::new();
         if let Some(start) = self.start {
-            filters.push_str(&format!("    m.date >= {start}"));
+            filters.push_str(&format!("    {field} >= {start}"));
         }
         if let Some(end) = self.end {
             if !filters.is_empty() {
                 filters.push_str(" AND ");
             }
-            filters.push_str(&format!("    m.date <= {end}"));
+            filters.push_str(&format!("    {field} <= {end}"));
         }
 
         if !filters.is_empty() {
@@ -157,16 +157,17 @@ mod use_tests {
         let mut context = QueryContext::default();
         context.set_start("2020-01-01").unwrap();
 
-        let from_timestamp = NaiveDateTime::from_timestamp_opt(
+        let from_timestamp = DateTime::from_timestamp(
             (context.start.unwrap() / TIMESTAMP_FACTOR) + get_offset(),
             0,
         )
-        .unwrap();
+        .unwrap()
+        .naive_utc();
         let local = Local.from_utc_datetime(&from_timestamp);
 
         assert_eq!(format(&Ok(local)), "Jan 01, 2020 12:00:00 AM");
         assert_eq!(
-            context.generate_filter_statement(),
+            context.generate_filter_statement("m.date"),
             " WHERE\n                     m.date >= 599558400000000000"
         );
         assert!(context.start.is_some());
@@ -182,16 +183,15 @@ mod use_tests {
         let mut context = QueryContext::default();
         context.set_end("2020-01-01").unwrap();
 
-        let from_timestamp = NaiveDateTime::from_timestamp_opt(
-            (context.end.unwrap() / TIMESTAMP_FACTOR) + get_offset(),
-            0,
-        )
-        .unwrap();
+        let from_timestamp =
+            DateTime::from_timestamp((context.end.unwrap() / TIMESTAMP_FACTOR) + get_offset(), 0)
+                .unwrap()
+                .naive_utc();
         let local = Local.from_utc_datetime(&from_timestamp);
 
         assert_eq!(format(&Ok(local)), "Jan 01, 2020 12:00:00 AM");
         assert_eq!(
-            context.generate_filter_statement(),
+            context.generate_filter_statement("m.date"),
             " WHERE\n                     m.date <= 599558400000000000"
         );
         assert!(context.start.is_none());
@@ -208,24 +208,24 @@ mod use_tests {
         context.set_start("2020-01-01").unwrap();
         context.set_end("2020-02-02").unwrap();
 
-        let from_timestamp = NaiveDateTime::from_timestamp_opt(
+        let from_timestamp = DateTime::from_timestamp(
             (context.start.unwrap() / TIMESTAMP_FACTOR) + get_offset(),
             0,
         )
-        .unwrap();
+        .unwrap()
+        .naive_utc();
         let local_start = Local.from_utc_datetime(&from_timestamp);
 
-        let from_timestamp = NaiveDateTime::from_timestamp_opt(
-            (context.end.unwrap() / TIMESTAMP_FACTOR) + get_offset(),
-            0,
-        )
-        .unwrap();
+        let from_timestamp =
+            DateTime::from_timestamp((context.end.unwrap() / TIMESTAMP_FACTOR) + get_offset(), 0)
+                .unwrap()
+                .naive_utc();
         let local_end = Local.from_utc_datetime(&from_timestamp);
 
         assert_eq!(format(&Ok(local_start)), "Jan 01, 2020 12:00:00 AM");
         assert_eq!(format(&Ok(local_end)), "Feb 02, 2020 12:00:00 AM");
         assert_eq!(
-            context.generate_filter_statement(),
+            context.generate_filter_statement("m.date"),
             " WHERE\n                     m.date >= 599558400000000000 AND     m.date <= 602323200000000000"
         );
         assert!(context.start.is_some());
@@ -238,7 +238,7 @@ mod use_tests {
         let mut context = QueryContext::default();
         assert!(context.set_start("2020-13-32").is_err());
         assert!(!context.has_filters());
-        assert_eq!(context.generate_filter_statement(), "");
+        assert_eq!(context.generate_filter_statement("m.date"), "");
     }
 
     #[test]
@@ -246,7 +246,7 @@ mod use_tests {
         let mut context = QueryContext::default();
         assert!(context.set_end("fake").is_err());
         assert!(!context.has_filters());
-        assert_eq!(context.generate_filter_statement(), "");
+        assert_eq!(context.generate_filter_statement("m.date"), "");
     }
 }
 

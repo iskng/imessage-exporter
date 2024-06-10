@@ -154,7 +154,7 @@ impl Config {
         let mut added = 0;
         let mut out_s = String::with_capacity(MAX_LENGTH);
         for participant_id in participants {
-            let participant = self.who(Some(*participant_id), false);
+            let participant = self.who(Some(*participant_id), false, &None);
             if participant.len() + out_s.len() < MAX_LENGTH {
                 if !out_s.is_empty() {
                     out_s.push_str(", ");
@@ -238,8 +238,9 @@ impl Config {
                 ));
             }
         } else {
-            let total_attachment_size = Attachment::get_total_attachment_bytes(&self.db)
-                .map_err(RuntimeError::DatabaseError)?;
+            let total_attachment_size =
+                Attachment::get_total_attachment_bytes(&self.db, &self.options.query_context)
+                    .map_err(RuntimeError::DatabaseError)?;
             estimated_export_size += total_attachment_size;
             if (estimated_export_size + total_attachment_size) >= free_space_at_location {
                 return Err(RuntimeError::NotEnoughAvailableSpace(
@@ -338,8 +339,16 @@ impl Config {
     }
 
     /// Determine who sent a message
-    pub fn who(&self, handle_id: Option<i32>, is_from_me: bool) -> &str {
+    pub fn who<'a, 'b: 'a>(
+        &'a self,
+        handle_id: Option<i32>,
+        is_from_me: bool,
+        destination_caller_id: &'b Option<String>,
+    ) -> &'a str {
         if is_from_me {
+            if self.options.use_caller_id {
+                return destination_caller_id.as_deref().unwrap_or(ME);
+            }
             return self.options.custom_name.as_deref().unwrap_or(ME);
         } else if let Some(handle_id) = handle_id {
             return match self.participants.get(&handle_id) {
@@ -377,6 +386,7 @@ mod filename_tests {
             query_context: QueryContext::default(),
             no_lazy: false,
             custom_name: None,
+            use_caller_id: false,
             platform: Platform::macOS,
             ignore_disk_space: false,
         }
@@ -607,6 +617,7 @@ mod who_tests {
             query_context: QueryContext::default(),
             no_lazy: false,
             custom_name: None,
+            use_caller_id: false,
             platform: Platform::macOS,
             ignore_disk_space: false,
         }
@@ -644,6 +655,7 @@ mod who_tests {
             text: None,
             service: Some("iMessage".to_string()),
             handle_id: Some(i32::default()),
+            destination_caller_id: None,
             subject: None,
             date: i64::default(),
             date_read: i64::default(),
@@ -651,6 +663,9 @@ mod who_tests {
             is_from_me: false,
             is_read: false,
             item_type: 0,
+            other_handle: 0,
+            share_status: false,
+            share_direction: false,
             group_title: None,
             group_action_type: 0,
             associated_message_guid: None,
@@ -676,7 +691,7 @@ mod who_tests {
         app.participants.insert(10, "Person 10".to_string());
 
         // Get participant name
-        let who = app.who(Some(10), false);
+        let who = app.who(Some(10), false, &None);
         assert_eq!(who, "Person 10".to_string());
     }
 
@@ -686,7 +701,7 @@ mod who_tests {
         let app = fake_app(options);
 
         // Get participant name
-        let who = app.who(Some(10), false);
+        let who = app.who(Some(10), false, &None);
         assert_eq!(who, "Unknown".to_string());
     }
 
@@ -696,8 +711,20 @@ mod who_tests {
         let app = fake_app(options);
 
         // Get participant name
-        let who = app.who(Some(0), true);
+        let who = app.who(Some(0), true, &None);
         assert_eq!(who, "Me".to_string());
+    }
+
+    #[test]
+    fn can_get_who_me_caller_id() {
+        let mut options = fake_options();
+        options.use_caller_id = true;
+        let app = fake_app(options);
+
+        // Get participant name
+        let caller_id = Some("test".to_string());
+        let who = app.who(Some(0), true, &caller_id);
+        assert_eq!(who, "test".to_string());
     }
 
     #[test]
@@ -707,7 +734,7 @@ mod who_tests {
         let app = fake_app(options);
 
         // Get participant name
-        let who = app.who(Some(0), true);
+        let who = app.who(Some(0), true, &None);
         assert_eq!(who, "Name".to_string());
     }
 
@@ -717,8 +744,20 @@ mod who_tests {
         let app = fake_app(options);
 
         // Get participant name
-        let who = app.who(None, true);
+        let who = app.who(None, true, &None);
         assert_eq!(who, "Me".to_string());
+    }
+
+    #[test]
+    fn can_get_who_me_none_caller_id() {
+        let mut options = fake_options();
+        options.use_caller_id = true;
+        let app = fake_app(options);
+
+        // Get participant name
+        let caller_id = Some("test".to_string());
+        let who = app.who(None, true, &caller_id);
+        assert_eq!(who, "test".to_string());
     }
 
     #[test]
@@ -727,7 +766,7 @@ mod who_tests {
         let app = fake_app(options);
 
         // Get participant name
-        let who = app.who(None, false);
+        let who = app.who(None, false, &None);
         assert_eq!(who, "Unknown".to_string());
     }
 
@@ -830,6 +869,7 @@ mod directory_tests {
             query_context: QueryContext::default(),
             no_lazy: false,
             custom_name: None,
+            use_caller_id: false,
             platform: Platform::macOS,
             ignore_disk_space: false,
         }

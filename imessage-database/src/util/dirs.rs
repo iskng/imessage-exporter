@@ -7,9 +7,9 @@ use std::{env::var, path::PathBuf};
 use crate::tables::table::DEFAULT_PATH_MACOS;
 
 /// Get the user's home directory (macOS only)
-/// 
+///
 /// # Panics
-/// 
+///
 /// Will panic if the environment variable `$HOME` is missing.
 ///
 /// # Example:
@@ -21,10 +21,7 @@ use crate::tables::table::DEFAULT_PATH_MACOS;
 /// println!("{path}");
 /// ```
 pub fn home() -> String {
-    match var("HOME") {
-        Ok(path) => path,
-        Err(why) => panic!("Unable to resolve user home directory: {why}"),
-    }
+    var("HOME").unwrap_or_default()
 }
 
 /// Get the default path the macOS iMessage database is located at (macOS only)
