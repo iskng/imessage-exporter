@@ -1,10 +1,16 @@
-use std::path::Path;
+use std::{borrow::Cow, fs::File, io::BufWriter};
 
 use imessage_database::{
-    error::{message::MessageError, plist::PlistParseError, table::TableError},
+    error::{plist::PlistParseError, table::TableError},
     message_types::{
-        app::AppMessage, app_store::AppStoreMessage, collaboration::CollaborationMessage,
-        handwriting::HandwrittenMessage, music::MusicMessage, placemark::PlacemarkMessage,
+        app::AppMessage,
+        app_store::AppStoreMessage,
+        collaboration::CollaborationMessage,
+        edited::EditedMessage,
+        handwriting::HandwrittenMessage,
+        music::MusicMessage,
+        placemark::PlacemarkMessage,
+        text_effects::{Animation, Style, TextEffect, Unit},
         url::URLMessage,
     },
     tables::{attachment::Attachment, messages::Message},
@@ -19,7 +25,7 @@ pub trait Exporter<'a> {
     /// Begin iterating over the messages table
     fn iter_messages(&mut self) -> Result<(), RuntimeError>;
     /// Get the file handle to write to, otherwise create a new one
-    fn get_or_create_file(&mut self, message: &Message) -> &Path;
+    fn get_or_create_file(&mut self, message: &Message) -> &mut BufWriter<File>;
 }
 
 /// Defines behavior for formatting message instances to the desired output format
@@ -52,8 +58,16 @@ pub(super) trait Writer<'a> {
     /// Format a legacy Shared Location message
     fn format_shared_location(&self, msg: &'a Message) -> &str;
     /// Format an edited message
-    fn format_edited(&self, msg: &'a Message, indent: &str) -> Result<String, MessageError>;
-    fn write_to_file(file: &Path, text: &str);
+    fn format_edited(
+        &self,
+        msg: &'a Message,
+        edited_message: &'a EditedMessage,
+        message_part_idx: usize,
+        indent: &str,
+    ) -> Option<String>;
+    /// Format some attributed text
+    fn format_attributed(&'a self, text: &'a str, attribute: &'a TextEffect) -> Cow<str>;
+    fn write_to_file(file: &mut BufWriter<File>, text: &str) -> Result<(), RuntimeError>;
 }
 
 /// Defines behavior for formatting custom balloons to the desired output format
@@ -88,4 +102,19 @@ pub(super) trait BalloonFormatter<T> {
         attachments: &mut Vec<Attachment>,
         indent: T,
     ) -> String;
+}
+
+pub(super) trait TextEffectFormatter {
+    /// Format message text containing a [`Mention`](imessage_database::message_types::text_effects::TextEffect::Mention)
+    fn format_mention(&self, text: &str, mentioned: &str) -> String;
+    /// Format message text containing a [`Link`](imessage_database::message_types::text_effects::TextEffect::Link)
+    fn format_link(&self, text: &str, url: &str) -> String;
+    /// Format message text containing an [`OTP`](imessage_database::message_types::text_effects::TextEffect::OTP)
+    fn format_otp(&self, text: &str) -> String;
+    /// Format message text containing a [`Conversion`](imessage_database::message_types::text_effects::TextEffect::Conversion)
+    fn format_conversion(&self, text: &str, unit: &Unit) -> String;
+    /// Format message text containing some [`Styles`](imessage_database::message_types::text_effects::TextEffect::Styles)
+    fn format_styles(&self, text: &str, styles: &[Style]) -> String;
+    /// Format [`Animated`](imessage_database::message_types::text_effects::TextEffect::Animated) message text
+    fn format_animated(&self, text: &str, animation: &Animation) -> String;
 }

@@ -5,7 +5,10 @@ use std::{
 };
 
 use filetime::{set_file_times, FileTime};
-use imessage_database::tables::{attachment::Attachment, messages::Message};
+use imessage_database::tables::{
+    attachment::{Attachment, MediaType},
+    messages::Message,
+};
 use uuid::Uuid;
 
 use crate::app::{
@@ -76,7 +79,13 @@ impl AttachmentManager {
             match self {
                 AttachmentManager::Compatible => match &config.converter {
                     Some(converter) => {
-                        Self::copy_convert(from, &mut to, converter, attachment.is_sticker);
+                        Self::copy_convert(
+                            from,
+                            &mut to,
+                            converter,
+                            attachment.is_sticker,
+                            attachment.mime_type(),
+                        );
                     }
                     None => Self::copy_raw(from, &to),
                 },
@@ -125,17 +134,20 @@ impl AttachmentManager {
     /// - Sticker `HEICS` files convert to `GIF`
     /// - Attachment `HEIC` files convert to `JPEG`
     /// - Other files are copied with their original formats
-    fn copy_convert(from: &Path, to: &mut PathBuf, converter: &Converter, is_sticker: bool) {
-        let original_extension = from.extension().unwrap_or_default();
-
+    fn copy_convert(
+        from: &Path,
+        to: &mut PathBuf,
+        converter: &Converter,
+        is_sticker: bool,
+        mime_type: MediaType,
+    ) {
         // Handle sticker attachments
         if is_sticker {
             // Determine the output type of the sticker
-            let output_type: Option<ImageType> = match original_extension.to_str() {
+            let output_type: Option<ImageType> = match mime_type {
                 // Normal stickers get converted to png
-                Some("heic" | "HEIC") => Some(ImageType::Png),
-                // Animated stickers get converted to gif
-                Some("heics" | "HEICS") => Some(ImageType::Gif),
+                MediaType::Image("heic") | MediaType::Image("HEIC") => Some(ImageType::Png),
+                MediaType::Image("heics") | MediaType::Image("HEICS") => Some(ImageType::Gif),
                 _ => None,
             };
 
@@ -150,7 +162,10 @@ impl AttachmentManager {
             }
         }
         // Normal attachments always get converted to jpeg
-        else if original_extension == "heic" || original_extension == "HEIC" {
+        else if matches!(
+            mime_type,
+            MediaType::Image("heic") | MediaType::Image("HEIC")
+        ) {
             let output_type = ImageType::Jpeg;
             // Update extension for conversion
             to.set_extension(output_type.to_str());

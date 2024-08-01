@@ -222,6 +222,10 @@ span.timestamp {
 	opacity: 60%;
 }
 
+span.unsent {
+	opacity: 75%;
+}
+
 span.reply_anchor {
 	opacity: 100%;
 }

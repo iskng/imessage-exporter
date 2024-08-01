@@ -21,15 +21,17 @@ pub fn sanitize_filename(filename: &str) -> String {
 
 /// Escapes HTML special characters in the input string.
 pub fn sanitize_html(input: &str) -> Cow<str> {
-    for (idx, char) in input.char_indices() {
-        if matches!(char, '<' | '>' | '"' | '’' | '&') {
+    for (idx, c) in input.char_indices() {
+        if matches!(c, '<' | '>' | '"' | '\'' | '`' | '&' | ' ') {
             let mut res = String::from(&input[..idx]);
             input[idx..].chars().for_each(|c| match c {
                 '<' => res.push_str("&lt;"),
                 '>' => res.push_str("&gt;"),
                 '"' => res.push_str("&quot;"),
-                '’' => res.push_str("&#39;"),
+                '\'' => res.push_str("&apos;"),
+                '`' => res.push_str("&grave;"),
                 '&' => res.push_str("&amp;"),
+                ' ' => res.push_str("&nbsp;"),
                 _ => res.push(c),
             });
             return Cow::Owned(res);
@@ -81,8 +83,19 @@ mod tests {
     }
 
     #[test]
+    fn can_sanitize_code_block() {
+        assert_eq!(
+            &sanitize_html("`imessage-exporter -f txt`"),
+            "&grave;imessage-exporter -f txt&grave;"
+        );
+    }
+
+    #[test]
     fn can_sanitize_all_special_chars() {
-        assert_eq!(&sanitize_html("<>&\"’"), "&lt;&gt;&amp;&quot;&#39;");
+        assert_eq!(
+            &sanitize_html("<>&\"`'"),
+            "&lt;&gt;&amp;&quot;&grave;&apos;"
+        );
     }
 
     #[test]
@@ -90,6 +103,14 @@ mod tests {
         assert_eq!(
             &sanitize_html("<div>Hello &amp; world</div>"),
             "&lt;div&gt;Hello &amp;amp; world&lt;/div&gt;"
+        );
+    }
+
+    #[test]
+    fn can_sanitize_mixed_content_nbsp() {
+        assert_eq!(
+            &sanitize_html("<div>Hello &amp; world</div>"),
+            "&lt;div&gt;Hello&nbsp;&amp;amp;&nbsp;world&lt;/div&gt;"
         );
     }
 }

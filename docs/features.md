@@ -1,6 +1,6 @@
 # Features
 
-This exporter is fully-featured and well-documented.
+The library and binary crates aim to provide the most comprehensive and accurate representation of iMessage data available.
 
 ## Targeted Versions
 
@@ -12,23 +12,31 @@ This tool targets the current latest public release for macOS and iMessage. It m
   - Correctly extracts time-zone corrected timestamps
   - Detects when a message was read and calculates the time until read for both parties
     - Humanizes display of time-until-read duration
-  - Parses `streamtyped` message body data
+  - Parses `typedstream` message body data
   - Detects the service a message was sent from
     - In HTML exports, balloons are colored correctly for the service they were sent with
+- Formatted Text
+  - Parses formatted text ranges from `typedstream` message body data
+  - Supports all iMessage text format ranges:
+    - Mentions
+    - Hyperlinks
+    - OTP/2FA
+    - Unit Conversions
 - Edited and Unsent messages
-  - Detects if messages were edited or unsent
+  - Detects if messages components were edited or unsent
     - Edited messages
-      - Parses `streamtyped` message data
+      - Parses `typedstream` edited body data
       - Displays content and timestamps for each edit
       - Humanizes display of edit timestamp gaps
       - Edited messages received before Ventura display as normal messages without history
     - Unsent messages
       - No content, but are noted in context
 - Multi-part messages
-  - iMessages can have multiple parts, separated by some special characters
+  - iMessages can have multiple parts, denoted by ranges in `typedstream` message body data
   - Parts are displayed as
     - New lines in TXT exports
     - Separate balloons in HTML exports
+  - Handles Edited and Unsent parts
 - Threads and Message Replies
   - Threads are displayed both threaded under the parent as well as in-place
     - This is to preserve context, which can be lost if replying to older messages
@@ -45,6 +53,7 @@ This tool targets the current latest public release for macOS and iMessage. It m
   - Attachments are displayed as
     - File paths in TXT exports
     - Embeds in HTML exports (including `<img>`, `<video>`, and `<audio>`)
+  - Attachment date metadata is set to the date and time of message receipt
 - Expressives
   - Detects both bubble and screen effects
   - Messages sent with expressives are annotated

@@ -1,10 +1,10 @@
 /*!
- Errors that can happen when parsing `streamtyped` data.
+ Errors that can happen when parsing `typedstream` data. This module is for the legacy simple `typedstream` parser.
 */
 
 use std::fmt::{Display, Formatter, Result};
 
-/// Errors that can happen when parsing `streamtyped` data
+/// Errors that can happen when parsing `typedstream` data
 #[derive(Debug)]
 pub enum StreamTypedError {
     NoStartPattern,

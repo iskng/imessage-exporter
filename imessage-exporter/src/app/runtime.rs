@@ -204,6 +204,14 @@ impl Config {
         eprintln!("[4/4] Caching reactions...");
         let reactions = Message::cache(&conn).map_err(RuntimeError::DatabaseError)?;
         eprintln!("Cache built!");
+
+        // Only attempt to create a converter if we need it
+        let converter = match options.attachment_manager {
+            AttachmentManager::Disabled => None,
+            AttachmentManager::Compatible => Converter::determine(),
+            AttachmentManager::Efficient => None,
+        };
+
         Ok(Config {
             chatrooms,
             real_chatrooms: ChatToHandle::dedupe(&chatroom_participants),
@@ -214,7 +222,7 @@ impl Config {
             options,
             offset: get_offset(),
             db: conn,
-            converter: Converter::determine(),
+            converter,
         })
     }
 
@@ -679,6 +687,8 @@ mod who_tests {
             num_attachments: 0,
             deleted_from: None,
             num_replies: 0,
+            components: None,
+            edited_parts: None,
         }
     }
 

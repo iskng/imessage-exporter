@@ -6,12 +6,15 @@ use std::fmt::{Display, Formatter, Result};
 
 use crate::error::{plist::PlistParseError, streamtyped::StreamTypedError};
 
+use super::typedstream::TypedStreamError;
+
 /// Errors that can happen when working with message table data
 #[derive(Debug)]
 pub enum MessageError {
     MissingData,
     NoText,
     StreamTypedParseError(StreamTypedError),
+    TypedStreamParseError(TypedStreamError),
     PlistParseError(PlistParseError),
     InvalidTimestamp(i64),
 }
@@ -22,6 +25,12 @@ impl Display for MessageError {
             MessageError::MissingData => write!(fmt, "No attributedBody found!"),
             MessageError::NoText => write!(fmt, "Message has no text!"),
             MessageError::StreamTypedParseError(why) => {
+                write!(
+                    fmt,
+                    "Failed to parse attributedBody with legacy parser: {why}"
+                )
+            }
+            MessageError::TypedStreamParseError(why) => {
                 write!(fmt, "Failed to parse attributedBody: {why}")
             }
             MessageError::PlistParseError(why) => {

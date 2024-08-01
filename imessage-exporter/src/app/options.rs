@@ -419,6 +419,8 @@ pub fn from_command_line() -> ArgMatches {
 
 #[cfg(test)]
 mod arg_tests {
+    use std::fs;
+
     use imessage_database::util::{
         dirs::default_db_path, platform::Platform, query_context::QueryContext,
     };
@@ -538,6 +540,9 @@ mod arg_tests {
 
     #[test]
     fn can_build_option_export_html() {
+        // Cleanup existing temp data
+        let _ = fs::remove_file("/tmp/orphaned.html");
+
         // Get matches from sample args
         let cli_args: Vec<&str> = vec!["imessage-exporter", "-f", "html", "-o", "/tmp"];
         let command = get_command();
@@ -568,6 +573,9 @@ mod arg_tests {
 
     #[test]
     fn can_build_option_export_txt_no_lazy() {
+        // Cleanup existing temp data
+        let _ = fs::remove_file("/tmp/orphaned.txt");
+
         // Get matches from sample args
         let cli_args: Vec<&str> = vec!["imessage-exporter", "-f", "txt", "-l"];
         let command = get_command();
@@ -785,6 +793,9 @@ mod path_tests {
 
     #[test]
     fn can_validate_empty() {
+        // Cleanup existing temp data
+        let _ = fs::remove_file("/tmp/orphaned.txt");
+
         let tmp = String::from("/tmp");
         let export_path = Some(&tmp);
         let export_type = Some(ExportType::Txt);
@@ -796,6 +807,9 @@ mod path_tests {
 
     #[test]
     fn can_validate_different_type() {
+        // Cleanup existing temp data
+        let _ = fs::remove_file("/tmp/orphaned.txt");
+
         let tmp = String::from("/tmp");
         let export_path = Some(&tmp);
         let export_type = Some(ExportType::Txt);
@@ -813,6 +827,9 @@ mod path_tests {
 
     #[test]
     fn can_validate_same_type() {
+        // Cleanup existing temp data
+        let _ = fs::remove_file("/tmp/orphaned.txt");
+
         let tmp = String::from("/tmp");
         let export_path = Some(&tmp);
         let export_type = Some(ExportType::Txt);

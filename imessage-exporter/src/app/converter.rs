@@ -49,9 +49,10 @@ impl Converter {
 }
 
 /// Determine if a shell program exists on the system
+#[cfg(not(target_family = "windows"))]
 fn exists(name: &str) -> bool {
     if let Ok(process) = Command::new("type")
-        .args(&vec![name])
+        .args(vec![name])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .stdin(Stdio::null())
@@ -62,6 +63,16 @@ fn exists(name: &str) -> bool {
         }
     };
     false
+}
+
+/// Determine if a shell program exists on the system
+#[cfg(target_family = "windows")]
+fn exists(name: &str) -> bool {
+    Command::new("where")
+        .arg(name)
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
 }
 
 /// Convert a HEIC image file to the provided format
@@ -99,7 +110,7 @@ pub fn convert_heic(
         Converter::Sips => {
             // Build the command
             match Command::new("sips")
-                .args(&vec![
+                .args(vec![
                     "-s",
                     "format",
                     output_image_type.to_str(),
@@ -128,7 +139,7 @@ pub fn convert_heic(
         Converter::ImagemagickLegacy => {
             // Build the command
             match Command::new("convert")
-                .args(&vec![from_path, to_path])
+                .args(vec![from_path, to_path])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .stdin(Stdio::null())
@@ -151,7 +162,7 @@ pub fn convert_heic(
         // Build the command
         {
             match Command::new("magick")
-                .args(&vec![from_path, to_path])
+                .args(vec![from_path, to_path])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .stdin(Stdio::null())
