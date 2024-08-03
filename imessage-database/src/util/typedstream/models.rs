@@ -53,7 +53,7 @@ pub enum Archivable {
     /// comes before the ones it inherits from. To preserve the order, we reserve the first slot to store the actual object's data
     /// and then later add it back to the right place.
     Placeholder,
-    /// A type that made it through the parsing process without getting replaced by an object.``
+    /// A type that made it through the parsing process without getting replaced by an object.
     Type(Vec<Type>),
 }
 

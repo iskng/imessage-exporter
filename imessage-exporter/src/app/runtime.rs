@@ -5,6 +5,7 @@ use std::{
     path::PathBuf,
 };
 
+use fdlimit::raise_fd_limit;
 use fs2::available_space;
 use rusqlite::Connection;
 
@@ -332,13 +333,16 @@ impl Config {
                 self.ensure_free_space()?;
             }
 
+            // Ensure we have enough file handles to export
+            let _ = raise_fd_limit();
+
             // Create exporter, pass it data we care about, then kick it off
             match export_type {
                 ExportType::Html => {
-                    HTML::new(self).iter_messages()?;
+                    HTML::new(self)?.iter_messages()?;
                 }
                 ExportType::Txt => {
-                    TXT::new(self).iter_messages()?;
+                    TXT::new(self)?.iter_messages()?;
                 }
             }
         }
