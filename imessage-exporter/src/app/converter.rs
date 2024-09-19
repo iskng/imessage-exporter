@@ -27,7 +27,6 @@ impl ImageType {
 #[derive(Debug)]
 pub enum Converter {
     Sips,
-    ImagemagickLegacy,
     Imagemagick,
 }
 
@@ -36,9 +35,6 @@ impl Converter {
     pub fn determine() -> Option<Converter> {
         if exists("sips") {
             return Some(Converter::Sips);
-        }
-        if exists("convert") {
-            return Some(Converter::ImagemagickLegacy);
         }
         if exists("magick") {
             return Some(Converter::Imagemagick);
@@ -124,28 +120,6 @@ pub fn convert_heic(
                 .spawn()
             {
                 Ok(mut sips) => match sips.wait() {
-                    Ok(_) => Some(()),
-                    Err(why) => {
-                        eprintln!("Conversion failed: {why}");
-                        None
-                    }
-                },
-                Err(why) => {
-                    eprintln!("Conversion failed: {why}");
-                    None
-                }
-            }
-        }
-        Converter::ImagemagickLegacy => {
-            // Build the command
-            match Command::new("convert")
-                .args(vec![from_path, to_path])
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .stdin(Stdio::null())
-                .spawn()
-            {
-                Ok(mut convert) => match convert.wait() {
                     Ok(_) => Some(()),
                     Err(why) => {
                         eprintln!("Conversion failed: {why}");

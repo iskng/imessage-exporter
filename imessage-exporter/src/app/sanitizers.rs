@@ -1,9 +1,37 @@
+use std::collections::{HashMap, HashSet};
+use std::sync::LazyLock;
+
 use std::borrow::Cow;
 
+/// Characters disallowed in a filename
+static FILENAME_DISALLOWED_CHARS: LazyLock<HashSet<&char>> = LazyLock::new(|| {
+    let mut set = HashSet::new();
+    set.insert(&'*');
+    set.insert(&'"');
+    set.insert(&'/');
+    set.insert(&'\\');
+    set.insert(&'<');
+    set.insert(&'>');
+    set.insert(&':');
+    set.insert(&'|');
+    set.insert(&'?');
+    set
+});
+
+/// Characters disallowed in HTML
+static HTML_DISALLOWED_CHARS: LazyLock<HashMap<&char, &str>> = LazyLock::new(|| {
+    let mut map = HashMap::new();
+    map.insert(&'>', "&gt;");
+    map.insert(&'<', "&lt;");
+    map.insert(&'"', "&quot;");
+    map.insert(&'\'', "&apos;");
+    map.insert(&'`', "&grave;");
+    map.insert(&'&', "&amp;");
+    map.insert(&' ', "&nbsp;");
+    map
+});
 /// The character to replace disallowed chars with
 const FILENAME_REPLACEMENT_CHAR: char = '_';
-/// Characters disallowed in a filename
-const FILENAME_DISALLOWED_CHARS: [char; 3] = ['/', '\\', ':'];
 
 /// Remove unsafe chars in [this list](FILENAME_DISALLOWED_CHARS).
 pub fn sanitize_filename(filename: &str) -> String {
@@ -22,18 +50,14 @@ pub fn sanitize_filename(filename: &str) -> String {
 /// Escapes HTML special characters in the input string.
 pub fn sanitize_html(input: &str) -> Cow<str> {
     for (idx, c) in input.char_indices() {
-        if matches!(c, '<' | '>' | '"' | '\'' | '`' | '&' | ' ') {
+        if HTML_DISALLOWED_CHARS.contains_key(&c) {
             let mut res = String::from(&input[..idx]);
-            input[idx..].chars().for_each(|c| match c {
-                '<' => res.push_str("&lt;"),
-                '>' => res.push_str("&gt;"),
-                '"' => res.push_str("&quot;"),
-                '\'' => res.push_str("&apos;"),
-                '`' => res.push_str("&grave;"),
-                '&' => res.push_str("&amp;"),
-                ' ' => res.push_str("&nbsp;"),
-                _ => res.push(c),
-            });
+            input[idx..]
+                .chars()
+                .for_each(|c| match HTML_DISALLOWED_CHARS.get(&c) {
+                    Some(replacement) => res.push_str(replacement),
+                    None => res.push(c),
+                });
             return Cow::Owned(res);
         }
     }
@@ -45,7 +69,7 @@ mod test_filename {
     use crate::app::sanitizers::sanitize_filename;
 
     #[test]
-    fn can_sanitize_all() {
+    fn can_sanitize_macos() {
         assert_eq!(sanitize_filename("a/b\\c:d"), "a_b_c_d");
     }
 
@@ -57,6 +81,14 @@ mod test_filename {
     #[test]
     fn can_sanitize_one() {
         assert_eq!(sanitize_filename("ab/cd"), "ab_cd");
+    }
+
+    #[test]
+    fn can_sanitize_only_bad() {
+        assert_eq!(
+            sanitize_filename("* \" / \\ < > : | ?"),
+            "_ _ _ _ _ _ _ _ _"
+        );
     }
 }
 

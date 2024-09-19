@@ -6,10 +6,14 @@ use std::{
     },
     fs::File,
     io::{BufWriter, Write},
+    path::PathBuf,
 };
 
 use crate::{
-    app::{error::RuntimeError, progress::build_progress_bar_export, runtime::Config},
+    app::{
+        attachment_manager::AttachmentManager, error::RuntimeError,
+        progress::build_progress_bar_export, runtime::Config,
+    },
     exporters::exporter::{BalloonFormatter, Exporter, Writer},
 };
 
@@ -58,8 +62,8 @@ impl<'a> Exporter<'a> for TXT<'a> {
         let file = File::options()
             .append(true)
             .create(true)
-            .open(orphaned)
-            .map_err(RuntimeError::DiskError)?;
+            .open(&orphaned)
+            .map_err(|err| RuntimeError::CreateError(err, orphaned))?;
 
         Ok(TXT {
             config,
@@ -112,8 +116,8 @@ impl<'a> Exporter<'a> for TXT<'a> {
                 let announcement = self.format_announcement(&msg);
                 TXT::write_to_file(self.get_or_create_file(&msg)?, &announcement)?;
             }
-            // Message replies and reactions are rendered in context, so no need to render them separately
-            else if !msg.is_reaction() {
+            // Message replies and tapbacks are rendered in context, so no need to render them separately
+            else if !msg.is_tapback() {
                 let message = self
                     .format_message(&msg, 0)
                     .map_err(RuntimeError::DatabaseError)?;
@@ -146,8 +150,8 @@ impl<'a> Exporter<'a> for TXT<'a> {
                         let file = File::options()
                             .append(true)
                             .create(true)
-                            .open(path.clone())
-                            .map_err(RuntimeError::DiskError)?;
+                            .open(&path)
+                            .map_err(|err| RuntimeError::CreateError(err, path))?;
 
                         Ok(entry.insert(BufWriter::new(file)))
                     }
@@ -259,7 +263,7 @@ impl<'a> Writer<'a> for TXT<'a> {
                         }
                     }
                 }
-                BubbleComponent::Attachment => match attachments.get_mut(attachment_index) {
+                BubbleComponent::Attachment(_) => match attachments.get_mut(attachment_index) {
                     Some(attachment) => {
                         if attachment.is_sticker {
                             let result = self.format_sticker(attachment, message);
@@ -308,27 +312,27 @@ impl<'a> Writer<'a> for TXT<'a> {
                 );
             }
 
-            // Handle Reactions
-            if let Some(reactions_map) = self.config.reactions.get(&message.guid) {
-                if let Some(reactions) = reactions_map.get(&idx) {
-                    let mut formatted_reactions = String::new();
-                    reactions
+            // Handle Tapbacks
+            if let Some(tapbacks_map) = self.config.tapbacks.get(&message.guid) {
+                if let Some(tapbacks) = tapbacks_map.get(&idx) {
+                    let mut formatted_tapbacks = String::new();
+                    tapbacks
                         .iter()
-                        .try_for_each(|reaction| -> Result<(), TableError> {
-                            let formatted = self.format_reaction(reaction)?;
+                        .try_for_each(|tapbacks| -> Result<(), TableError> {
+                            let formatted = self.format_tapback(tapbacks)?;
                             if !formatted.is_empty() {
                                 self.add_line(
-                                    &mut formatted_reactions,
-                                    &self.format_reaction(reaction)?,
+                                    &mut formatted_tapbacks,
+                                    &self.format_tapback(tapbacks)?,
                                     &indent,
                                 );
                             }
                             Ok(())
                         })?;
 
-                    if !formatted_reactions.is_empty() {
-                        self.add_line(&mut formatted_message, "Reactions:", &indent);
-                        self.add_line(&mut formatted_message, &formatted_reactions, &indent);
+                    if !formatted_tapbacks.is_empty() {
+                        self.add_line(&mut formatted_message, "Tapbacks:", &indent);
+                        self.add_line(&mut formatted_message, &formatted_tapbacks, &indent);
                     }
                 }
             }
@@ -339,7 +343,7 @@ impl<'a> Writer<'a> for TXT<'a> {
                     .iter_mut()
                     .try_for_each(|reply| -> Result<(), TableError> {
                         let _ = reply.generate_text(&self.config.db);
-                        if !reply.is_reaction() {
+                        if !reply.is_tapback() {
                             self.add_line(
                                 &mut formatted_message,
                                 &self.format_message(reply, 4)?,
@@ -415,9 +419,14 @@ impl<'a> Writer<'a> for TXT<'a> {
         if let Variant::App(balloon) = message.variant() {
             let mut app_bubble = String::new();
 
-            // Handwritten messages use a different payload type, so handle that first
-            if matches!(balloon, CustomBalloon::Handwriting) {
-                return Ok(self.format_handwriting(&HandwrittenMessage::new(), indent));
+            // Handwritten messages use a different payload type, so check that first
+            if message.is_handwriting() {
+                if let Some(payload) = message.raw_payload_data(&self.config.db) {
+                    return match HandwrittenMessage::from_payload(&payload) {
+                        Ok(bubble) => Ok(self.format_handwriting(message, &bubble, indent)),
+                        Err(why) => Err(PlistParseError::HandwritingError(why)),
+                    };
+                }
             }
 
             if let Some(payload) = message.payload_data(&self.config.db) {
@@ -426,7 +435,7 @@ impl<'a> Writer<'a> for TXT<'a> {
                     let parsed = parse_plist(&payload)?;
                     let bubble = URLMessage::get_url_message_override(&parsed)?;
                     match bubble {
-                        URLOverride::Normal(balloon) => self.format_url(&balloon, indent),
+                        URLOverride::Normal(balloon) => self.format_url(message, &balloon, indent),
                         URLOverride::AppleMusic(balloon) => self.format_music(&balloon, indent),
                         URLOverride::Collaboration(balloon) => {
                             self.format_collaboration(&balloon, indent)
@@ -472,15 +481,15 @@ impl<'a> Writer<'a> for TXT<'a> {
         }
     }
 
-    fn format_reaction(&self, msg: &Message) -> Result<String, TableError> {
+    fn format_tapback(&self, msg: &Message) -> Result<String, TableError> {
         match msg.variant() {
-            Variant::Reaction(_, added, reaction) => {
+            Variant::Tapback(_, added, tapback) => {
                 if !added {
                     return Ok(String::new());
                 }
                 Ok(format!(
-                    "{:?} by {}",
-                    reaction,
+                    "{} by {}",
+                    tapback,
                     self.config
                         .who(msg.handle_id, msg.is_from_me(), &msg.destination_caller_id),
                 ))
@@ -492,7 +501,7 @@ impl<'a> Writer<'a> for TXT<'a> {
                         .who(msg.handle_id, msg.is_from_me(), &msg.destination_caller_id);
                 // Sticker messages have only one attachment, the sticker image
                 Ok(if let Some(sticker) = paths.get_mut(0) {
-                    self.format_sticker(sticker, msg)
+                    format!("{} from {who}", self.format_sticker(sticker, msg))
                 } else {
                     format!("Sticker from {who} not found!")
                 })
@@ -654,11 +663,13 @@ impl<'a> Writer<'a> for TXT<'a> {
 }
 
 impl<'a> BalloonFormatter<&'a str> for TXT<'a> {
-    fn format_url(&self, balloon: &URLMessage, indent: &str) -> String {
+    fn format_url(&self, msg: &Message, balloon: &URLMessage, indent: &str) -> String {
         let mut out_s = String::new();
 
         if let Some(url) = balloon.get_url() {
             self.add_line(&mut out_s, url, indent);
+        } else if let Some(text) = &msg.text {
+            self.add_line(&mut out_s, text, indent);
         }
 
         if let Some(title) = balloon.title {
@@ -802,8 +813,33 @@ impl<'a> BalloonFormatter<&'a str> for TXT<'a> {
         out_s.strip_suffix('\n').unwrap_or(&out_s).to_string()
     }
 
-    fn format_handwriting(&self, _: &HandwrittenMessage, indent: &str) -> String {
-        format!("{indent}Handwritten messages are not yet supported!")
+    fn format_handwriting(
+        &self,
+        msg: &Message,
+        balloon: &HandwrittenMessage,
+        indent: &str,
+    ) -> String {
+        match self.config.options.attachment_manager {
+            AttachmentManager::Disabled => balloon
+                .render_ascii(40)
+                .replace("\n", &format!("{indent}\n")),
+            AttachmentManager::Compatible | AttachmentManager::Efficient => self
+                .config
+                .options
+                .attachment_manager
+                .handle_handwriting(msg, balloon, self.config)
+                .map(|filepath| {
+                    self.config
+                        .relative_path(PathBuf::from(&filepath))
+                        .unwrap_or(filepath.display().to_string())
+                })
+                .map(|filepath| format!("{indent}{filepath}"))
+                .unwrap_or_else(|| {
+                    balloon
+                        .render_ascii(40)
+                        .replace("\n", &format!("{indent}\n"))
+                }),
+        }
     }
 
     fn format_apple_pay(&self, balloon: &AppMessage, indent: &str) -> String {
@@ -1033,6 +1069,7 @@ mod tests {
             thread_originator_part: None,
             date_edited: 0,
             chat_id: None,
+            associated_message_emoji: None,
             num_attachments: 0,
             deleted_from: None,
             num_replies: 0,
@@ -1066,7 +1103,7 @@ mod tests {
             chatroom_participants: HashMap::new(),
             participants: HashMap::new(),
             real_participants: HashMap::new(),
-            reactions: HashMap::new(),
+            tapbacks: HashMap::new(),
             options,
             offset: get_offset(),
             db,
@@ -1400,7 +1437,7 @@ mod tests {
     }
 
     #[test]
-    fn can_format_txt_reaction_me() {
+    fn can_format_txt_tapback_me() {
         // Set timezone to PST for consistent Local time
         set_var("TZ", "PST");
 
@@ -1417,14 +1454,14 @@ mod tests {
         message.associated_message_type = Some(2000);
         message.associated_message_guid = Some("fake_guid".to_string());
 
-        let actual = exporter.format_reaction(&message).unwrap();
+        let actual = exporter.format_tapback(&message).unwrap();
         let expected = "Loved by Me";
 
         assert_eq!(actual, expected);
     }
 
     #[test]
-    fn can_format_txt_reaction_them() {
+    fn can_format_txt_tapback_them() {
         // Set timezone to PST for consistent Local time
         set_var("TZ", "PST");
 
@@ -1443,8 +1480,62 @@ mod tests {
         message.associated_message_guid = Some("fake_guid".to_string());
         message.handle_id = Some(999999);
 
-        let actual = exporter.format_reaction(&message).unwrap();
+        let actual = exporter.format_tapback(&message).unwrap();
         let expected = "Loved by Sample Contact";
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn can_format_txt_tapback_custom_emoji() {
+        // Set timezone to PST for consistent Local time
+        set_var("TZ", "PST");
+
+        // Create exporter
+        let options = fake_options();
+        let mut config = fake_config(options);
+        config
+            .participants
+            .insert(999999, "Sample Contact".to_string());
+        let exporter = TXT::new(&config).unwrap();
+
+        let mut message = blank();
+        // May 17, 2022  8:29:42 PM
+        message.date = 674526582885055488;
+        message.associated_message_type = Some(2006);
+        message.associated_message_guid = Some("fake_guid".to_string());
+        message.handle_id = Some(999999);
+        message.associated_message_emoji = Some("☕️".to_string());
+
+        let actual = exporter.format_tapback(&message).unwrap();
+        let expected = "☕️ by Sample Contact";
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn can_format_txt_tapback_custom_sticker() {
+        // Set timezone to PST for consistent Local time
+        set_var("TZ", "PST");
+
+        // Create exporter
+        let options = fake_options();
+        let mut config = fake_config(options);
+        config
+            .participants
+            .insert(999999, "Sample Contact".to_string());
+        let exporter = TXT::new(&config).unwrap();
+
+        let mut message = blank();
+        // May 17, 2022  8:29:42 PM
+        message.date = 674526582885055488;
+        message.associated_message_type = Some(2007);
+        message.associated_message_guid = Some("fake_guid".to_string());
+        message.handle_id = Some(999999);
+        message.associated_message_emoji = Some("☕️".to_string());
+
+        let actual = exporter.format_tapback(&message).unwrap();
+        let expected = "Sticker from Sample Contact not found!";
 
         assert_eq!(actual, expected);
     }
@@ -1662,7 +1753,7 @@ mod tests {
 mod balloon_format_tests {
     use std::env::set_var;
 
-    use super::tests::{fake_config, fake_options};
+    use super::tests::{blank, fake_config, fake_options};
     use crate::{exporters::exporter::BalloonFormatter, Exporter, TXT};
     use imessage_database::message_types::{
         app::AppMessage,
@@ -1692,7 +1783,7 @@ mod balloon_format_tests {
             placeholder: false,
         };
 
-        let expected = exporter.format_url(&balloon, "");
+        let expected = exporter.format_url(&blank(), &balloon, "");
         let actual = "url\ntitle\nsummary";
 
         assert_eq!(expected, actual);

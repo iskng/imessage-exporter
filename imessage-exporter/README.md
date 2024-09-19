@@ -48,6 +48,7 @@ The [releases page](https://github.com/ReagentX/imessage-exporter/releases) prov
         Compatible will convert HEIC files to JPEG
         Efficient will copy files without converting anything
         If omitted, the default is `disabled`
+        ImageMagick is required to convert images on non-macOS platforms.
         
 -p, --db-path <path/to/source>
         Specify an optional custom path for the iMessage database location
@@ -141,6 +142,10 @@ imessage-exporter -f txt -o ~/export-2020 -s 2020-01-01 -e 2021-01-01 -a macOS
 [Click here](../docs/features.md) for a full list of features.
 
 ## Caveats
+
+### Cross-platform HEIC conversion
+
+[ImageMagick](https://imagemagick.org/index.php) is required to make exported images more compatible on non-macOS platforms.
 
 ### HTML Exports
 

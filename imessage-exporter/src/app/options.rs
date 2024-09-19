@@ -327,7 +327,7 @@ fn get_command() -> Command {
             Arg::new(OPTION_ATTACHMENT_MANAGER)
             .short('c')
             .long(OPTION_ATTACHMENT_MANAGER)
-            .help(format!("Specify an optional method to use when copying message attachments\nCompatible will convert HEIC files to JPEG\nEfficient will copy files without converting anything\nIf omitted, the default is `{}`\n", AttachmentManager::default()))
+            .help(format!("Specify an optional method to use when copying message attachments\nCompatible will convert HEIC files to JPEG\nEfficient will copy files without converting anything\nIf omitted, the default is `{}`\nImageMagick is required to convert images on non-macOS platforms.\n", AttachmentManager::default()))
             .display_order(2)
             .value_name(SUPPORTED_ATTACHMENT_MANAGER_MODES),
         )
