@@ -18,7 +18,7 @@ use crate::{
         options::Options,
         sanitizers::sanitize_filename,
     },
-    exporters::csv::CSV,
+    exporters::{ csv::CSV, db::DB },
     Exporter,
     HTML,
     TXT,
@@ -366,6 +366,9 @@ impl Config {
                 }
                 ExportType::Csv => {
                     CSV::new(self)?.iter_messages()?;
+                }
+                ExportType::Db => {
+                    DB::new(self)?.iter_messages()?;
                 }
             }
         }

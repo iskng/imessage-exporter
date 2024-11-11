@@ -13,6 +13,8 @@ pub enum ExportType {
     Txt,
     /// Csv file export
     Csv,
+    /// DB data export
+    Db,
 }
 
 impl ExportType {
@@ -22,6 +24,7 @@ impl ExportType {
             "txt" => Some(Self::Txt),
             "html" => Some(Self::Html),
             "csv" => Some(Self::Csv),
+            "db" => Some(Self::Db),
             _ => None,
         }
     }
@@ -33,6 +36,7 @@ impl Display for ExportType {
             ExportType::Txt => write!(fmt, "txt"),
             ExportType::Html => write!(fmt, "html"),
             ExportType::Csv => write!(fmt, "csv"),
+            ExportType::Db => write!(fmt, "db"),
         }
     }
 }
