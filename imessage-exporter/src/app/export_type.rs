@@ -11,6 +11,8 @@ pub enum ExportType {
     Html,
     /// Text file export
     Txt,
+    /// Csv file export
+    Csv,
 }
 
 impl ExportType {
@@ -19,6 +21,7 @@ impl ExportType {
         match platform.to_lowercase().as_str() {
             "txt" => Some(Self::Txt),
             "html" => Some(Self::Html),
+            "csv" => Some(Self::Csv),
             _ => None,
         }
     }
@@ -29,6 +32,7 @@ impl Display for ExportType {
         match self {
             ExportType::Txt => write!(fmt, "txt"),
             ExportType::Html => write!(fmt, "html"),
+            ExportType::Csv => write!(fmt, "csv"),
         }
     }
 }
@@ -39,18 +43,9 @@ mod tests {
 
     #[test]
     fn can_parse_html_any_case() {
-        assert!(matches!(
-            ExportType::from_cli("html"),
-            Some(ExportType::Html)
-        ));
-        assert!(matches!(
-            ExportType::from_cli("HTML"),
-            Some(ExportType::Html)
-        ));
-        assert!(matches!(
-            ExportType::from_cli("HtMl"),
-            Some(ExportType::Html)
-        ));
+        assert!(matches!(ExportType::from_cli("html"), Some(ExportType::Html)));
+        assert!(matches!(ExportType::from_cli("HTML"), Some(ExportType::Html)));
+        assert!(matches!(ExportType::from_cli("HtMl"), Some(ExportType::Html)));
     }
 
     #[test]

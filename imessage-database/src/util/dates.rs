@@ -4,7 +4,7 @@
  Most dates are stored as nanosecond-precision unix timestamps with an epoch of `1/1/2001 00:00:00` in the local time zone.
 */
 
-use chrono::{DateTime, Duration, Local, TimeZone, Utc};
+use chrono::{ DateTime, Duration, Local, NaiveDateTime, TimeZone, Utc };
 
 use crate::error::message::MessageError;
 
@@ -16,9 +16,7 @@ pub const TIMESTAMP_FACTOR: i64 = 1000000000;
 /// This offset is used to adjust the unix timestamps stored in the iMessage database
 /// with a non-standard epoch of `2001-01-01 00:00:00` in the local time zone.
 pub fn get_offset() -> i64 {
-    Utc.with_ymd_and_hms(2001, 1, 1, 0, 0, 0)
-        .unwrap()
-        .timestamp()
+    Utc.with_ymd_and_hms(2001, 1, 1, 0, 0, 0).unwrap().timestamp()
 }
 
 /// Create a `DateTime<Local>` from an arbitrary date and offset
@@ -26,12 +24,48 @@ pub fn get_offset() -> i64 {
 /// This is used to create date data for anywhere dates are stored in the table, including
 /// `PLIST` payloads or [`typedstream`](crate::util::typedstream) data.
 pub fn get_local_time(date_stamp: &i64, offset: &i64) -> Result<DateTime<Local>, MessageError> {
-    let utc_stamp = DateTime::from_timestamp((date_stamp / TIMESTAMP_FACTOR) + offset, 0)
+    let utc_stamp = DateTime::from_timestamp(date_stamp / TIMESTAMP_FACTOR + offset, 0)
         .ok_or(MessageError::InvalidTimestamp(*date_stamp))?
         .naive_utc();
     Ok(Local.from_utc_datetime(&utc_stamp))
 }
-
+/// Get a UTC timestamp from an iMessage date stamp and offset
+///
+/// This converts the iMessage date stamp (in nanoseconds since 2001-01-01) to a UTC timestamp
+/// by dividing by the timestamp factor and adding the offset.
+///
+/// # Arguments
+///
+/// * `date_stamp` - The iMessage date stamp in nanoseconds
+/// * `offset` - The offset to add to convert from 2001 epoch to Unix epoch
+///
+/// # Returns
+///
+/// A UTC `NaiveDateTime` if valid, or a `MessageError` if the timestamp is invalid
+pub fn get_utc_time(date_stamp: &i64, offset: &i64) -> Result<NaiveDateTime, MessageError> {
+    let utc_stamp = DateTime::from_timestamp(date_stamp / TIMESTAMP_FACTOR + offset, 0)
+        .ok_or(MessageError::InvalidTimestamp(*date_stamp))?
+        .naive_utc();
+    Ok(utc_stamp)
+}
+/// Format a UTC date from the iMessage table for reading
+///
+/// # Example:
+///
+/// ```
+/// use chrono::NaiveDateTime;
+/// use imessage_database::util::dates::format_utc;
+///
+/// let date = NaiveDateTime::parse_from_str("2020-01-01 00:00:00", "%Y-%m-%d %H:%M:%S").unwrap();
+/// let formatted = format_utc(&Ok(date));
+/// println!("{formatted}"); // Jan 01, 2020 12:00:00 AM
+/// ```
+pub fn format_utc(date: &Result<NaiveDateTime, MessageError>) -> String {
+    match date {
+        Ok(d) => d.to_string(),
+        Err(why) => why.to_string(),
+    }
+}
 /// Format a date from the iMessage table for reading
 ///
 /// # Example:
@@ -64,7 +98,7 @@ pub fn format(date: &Result<DateTime<Local>, MessageError>) -> String {
 /// ```
 pub fn readable_diff(
     start: Result<DateTime<Local>, MessageError>,
-    end: Result<DateTime<Local>, MessageError>,
+    end: Result<DateTime<Local>, MessageError>
 ) -> Option<String> {
     // Calculate diff
     let diff: Duration = end.ok()? - start.ok()?;
@@ -82,8 +116,8 @@ pub fn readable_diff(
 
     let days = seconds / 86400;
     let hours = (seconds % 86400) / 3600;
-    let minutes = (seconds % 86400 % 3600) / 60;
-    let secs = seconds % 86400 % 3600 % 60;
+    let minutes = ((seconds % 86400) % 3600) / 60;
+    let secs = ((seconds % 86400) % 3600) % 60;
 
     if days != 0 {
         let metric = match days {
@@ -127,16 +161,12 @@ pub fn readable_diff(
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        error::message::MessageError,
-        util::dates::{format, readable_diff},
-    };
+    use crate::{ error::message::MessageError, util::dates::{ format, readable_diff } };
     use chrono::prelude::*;
 
     #[test]
     fn can_format_date_single_digit() {
-        let date = Local
-            .with_ymd_and_hms(2020, 5, 20, 9, 10, 11)
+        let date = Local.with_ymd_and_hms(2020, 5, 20, 9, 10, 11)
             .single()
             .ok_or(MessageError::InvalidTimestamp(0));
         assert_eq!(format(&date), "May 20, 2020  9:10:11 AM");
@@ -144,8 +174,7 @@ mod tests {
 
     #[test]
     fn can_format_date_double_digit() {
-        let date = Local
-            .with_ymd_and_hms(2020, 5, 20, 10, 10, 11)
+        let date = Local.with_ymd_and_hms(2020, 5, 20, 10, 10, 11)
             .single()
             .ok_or(MessageError::InvalidTimestamp(0));
         assert_eq!(format(&date), "May 20, 2020 10:10:11 AM");
@@ -162,10 +191,7 @@ mod tests {
     fn can_format_diff_all_singular() {
         let start = Ok(Local.with_ymd_and_hms(2020, 5, 20, 9, 10, 11).unwrap());
         let end = Ok(Local.with_ymd_and_hms(2020, 5, 21, 10, 11, 12).unwrap());
-        assert_eq!(
-            readable_diff(start, end),
-            Some("1 day, 1 hour, 1 minute, 1 second".to_owned())
-        );
+        assert_eq!(readable_diff(start, end), Some("1 day, 1 hour, 1 minute, 1 second".to_owned()));
     }
 
     #[test]
@@ -210,20 +236,14 @@ mod tests {
     fn can_format_diff_minutes_seconds() {
         let start = Ok(Local.with_ymd_and_hms(2020, 5, 20, 9, 10, 11).unwrap());
         let end = Ok(Local.with_ymd_and_hms(2020, 5, 20, 9, 15, 30).unwrap());
-        assert_eq!(
-            readable_diff(start, end),
-            Some("5 minutes, 19 seconds".to_owned())
-        );
+        assert_eq!(readable_diff(start, end), Some("5 minutes, 19 seconds".to_owned()));
     }
 
     #[test]
     fn can_format_diff_days_minutes() {
         let start = Ok(Local.with_ymd_and_hms(2020, 5, 20, 9, 10, 11).unwrap());
         let end = Ok(Local.with_ymd_and_hms(2020, 5, 22, 9, 30, 11).unwrap());
-        assert_eq!(
-            readable_diff(start, end),
-            Some("2 days, 20 minutes".to_owned())
-        );
+        assert_eq!(readable_diff(start, end), Some("2 days, 20 minutes".to_owned()));
     }
 
     #[test]
