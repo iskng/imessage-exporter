@@ -8,6 +8,7 @@ indicatif = "0.17.8"
 serde = "1.0.214"
 surrealdb = { version = "2.0.4", features = ["protocol-ws"] }
 tokio = { version = "1.41.1", features = ["full"] }
+dirs = "5.0"
 
 [profile.release]
 panic = "abort"   # Strip expensive panic clean-up logic

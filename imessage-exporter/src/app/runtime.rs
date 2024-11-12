@@ -404,7 +404,7 @@ impl Config {
         is_from_me: bool
     ) -> &'a str {
         if is_from_me {
-            return self.options.custom_name.as_deref().unwrap_or(ME);
+            return ME;
         } else if let Some(handle_id) = handle_id {
             return match self.participants.get(&handle_id) {
                 Some(contact) => contact,

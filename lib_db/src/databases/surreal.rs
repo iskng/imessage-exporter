@@ -1,5 +1,5 @@
 use crate::{ Database, DatabaseConnection, types::Message, LYNX_MESSAGES_TABLE };
-use surrealdb::engine::remote::ws::{ Client, Ws };
+
 use surrealdb::opt::auth::Root;
 use surrealdb::Surreal;
 use std::sync::Arc;
@@ -7,8 +7,14 @@ use tokio::runtime::Runtime;
 use surrealdb::sql::Thing;
 use serde::{ Serialize, Deserialize };
 
+use std::env;
+use surrealdb::engine::any;
+use surrealdb::engine::any::Any;
+
+use dirs;
+
 pub(crate) struct SurrealDatabase {
-    db: Arc<Surreal<Client>>,
+    db: Arc<Surreal<Any>>,
     connection: DatabaseConnection,
 }
 
@@ -33,9 +39,22 @@ impl SurrealDatabase {
         config: SurrealConfig,
         connection: DatabaseConnection
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        // Connect to the database using Ws endpoint
-        let db = Surreal::new::<Ws>(config.endpoint).await?;
+        // If ENDPOINT env var exists, use cache dir, otherwise use localhost
+        let endpoint = if env::var("LOCAL").is_ok() {
+            if let Some(cache_dir) = dirs::cache_dir() {
+                let db_path = cache_dir.join("lynx").join("db");
+                // Create the directory if it doesn't exist
+                std::fs::create_dir_all(&db_path)?;
+                format!("rocksdb:{}", db_path.to_string_lossy().to_string())
+            } else {
+                "ws://localhost:8000".to_owned()
+            }
+        } else {
+            "ws://localhost:8000".to_owned()
+        };
 
+        // Create the Surreal instance. This will create `Surreal<Any>`.
+        let db = any::connect(endpoint).await?;
         // Sign in as root user
         db.signin(Root {
             username: &config.username,
@@ -108,8 +127,8 @@ FOR $msg IN $messages {
         (CREATE persons CONTENT { phone_number: $msg.phone_number, is_me: $msg.is_from_me });
 
     -- Create or retrieve thread based on unique chat ID
-    LET $thread = (SELECT * FROM threads WHERE unique_chat_id = $msg.chat_id LIMIT 1)[0] ??
-        (CREATE threads CONTENT { unique_chat_id: $msg.chat_id });
+    LET $thread = (SELECT * FROM threads WHERE unique_chat_id = $msg.unique_chat_id LIMIT 1)[0] ??
+        (CREATE threads CONTENT { unique_chat_id: $msg.unique_chat_id });
 
     -- Create relationships between person, message, and thread
     RELATE $person->messaged_in->$thread;
@@ -143,14 +162,14 @@ COMMIT TRANSACTION;
                     DEFINE TABLE messaged_in SCHEMALESS;
                     DEFINE TABLE sent SCHEMALESS;
                     DEFINE TABLE in_thread SCHEMALESS;
-                    DEFINE TABLE to_person SCHEMALESS;
 
                     -- Define unique fields
                     DEFINE FIELD phone_number ON persons TYPE string ASSERT $value != NONE AND $value != '';
                     DEFINE INDEX person_phone ON persons FIELDS phone_number UNIQUE;
 
-                    DEFINE FIELD unique_chat_id ON threads TYPE option<int> ASSERT $value != NONE;
+                    DEFINE FIELD unique_chat_id ON threads TYPE string ASSERT $value != NONE AND $value != '';
                     DEFINE INDEX thread_chat_id ON threads FIELDS unique_chat_id UNIQUE;
+                    
                     "
                 ).await?;
 

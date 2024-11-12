@@ -9,7 +9,7 @@ use crate::{
     },
     exporters::exporter::Exporter,
 };
-
+use rand::Rng;
 use imessage_database::{
     error::{ plist::PlistParseError, table::TableError },
     message_types::variants::Variant,
@@ -167,7 +167,8 @@ impl<'a> DB<'a> {
                 let phone_number = self.config
                     .who(message.handle_id, message.is_from_me, &message.destination_caller_id)
                     .to_string();
-                format!("{}:Missing_chat_id", phone_number)
+
+                format!("{}:{}", phone_number, rand::thread_rng().gen_range(1..=100000))
             }
         };
 
