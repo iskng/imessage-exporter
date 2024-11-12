@@ -2,13 +2,9 @@
 Errors that can happen during the application's runtime
 */
 
-use std::{
-    fmt::{Display, Formatter, Result},
-    io::Error as IoError,
-    path::PathBuf,
-};
+use std::{ fmt::{ Display, Formatter, Result }, io::Error as IoError, path::PathBuf };
 
-use imessage_database::{error::table::TableError, util::size::format_file_size};
+use imessage_database::{ error::table::TableError, util::size::format_file_size };
 
 use crate::app::options::OPTION_BYPASS_FREE_SPACE_CHECK;
 
@@ -20,6 +16,7 @@ pub enum RuntimeError {
     DiskError(IoError),
     DatabaseError(TableError),
     NotEnoughAvailableSpace(u64, u64),
+    ExportError(Box<dyn std::error::Error>),
 }
 
 impl Display for RuntimeError {
@@ -31,13 +28,14 @@ impl Display for RuntimeError {
             RuntimeError::DatabaseError(why) => write!(fmt, "{why}"),
             RuntimeError::NotEnoughAvailableSpace(estimated_bytes, available_bytes) => {
                 write!(
-                    fmt, 
+                    fmt,
                     "Not enough free disk space!\nEstimated export size: {}\nDisk space available: {}\nPass `--{}` to ignore\n",
                     format_file_size(*estimated_bytes),
                     format_file_size(*available_bytes),
                     OPTION_BYPASS_FREE_SPACE_CHECK
                 )
             }
+            RuntimeError::ExportError(e) => write!(fmt, "Export error: {}", e),
         }
     }
 }

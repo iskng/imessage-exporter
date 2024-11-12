@@ -396,6 +396,23 @@ impl Config {
         }
         UNKNOWN
     }
+
+    /// Determine who sent a message
+    pub fn determine_who<'a, 'b: 'a>(
+        &'a self,
+        handle_id: Option<i32>,
+        is_from_me: bool
+    ) -> &'a str {
+        if is_from_me {
+            return self.options.custom_name.as_deref().unwrap_or(ME);
+        } else if let Some(handle_id) = handle_id {
+            return match self.participants.get(&handle_id) {
+                Some(contact) => contact,
+                None => UNKNOWN,
+            };
+        }
+        UNKNOWN
+    }
 }
 
 #[cfg(test)]

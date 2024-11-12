@@ -1,11 +1,4 @@
-use std::{
-    borrow::Cow,
-    collections::HashMap,
-    fs::File,
-    io::{ BufWriter, Write },
-    path::PathBuf,
-    path::Path,
-};
+use std::{ borrow::Cow, collections::HashMap, fs::File, io::{ BufWriter, Write }, path::PathBuf };
 
 use crate::{
     app::{
@@ -23,7 +16,7 @@ use imessage_database::{
     tables::{
         attachment::Attachment,
         messages::{ models::BubbleComponent, Message },
-        table::{ Table, FITNESS_RECEIVER, ME, ORPHANED, YOU },
+        table::{ Table, FITNESS_RECEIVER, ME, YOU },
     },
     util::dates::format_utc,
 };
@@ -48,14 +41,17 @@ use imessage_database::{
     },
 };
 use super::exporter::{ BalloonFormatter, Writer };
-use super::database::DbMessage;
+use lib_db::{ Database, DatabaseType };
 
 pub struct DB<'a> {
     /// Data that is setup from the application's runtime
     pub config: &'a Config,
 
     /// Buffer to store messages before batch insert
-    pub messages: Vec<DbMessage>,
+    pub messages: Vec<lib_db::Message>,
+
+    /// Database exporter
+    pub database: Option<Box<dyn Database>>,
 
     /// Log file writer
     pub log_writer: Option<BufWriter<File>>,
@@ -63,9 +59,14 @@ pub struct DB<'a> {
 
 impl<'a> Exporter<'a> for DB<'a> {
     fn new(config: &'a Config) -> Result<Self, RuntimeError> {
+        let database = <dyn Database>
+            ::new(DatabaseType::Surreal)
+            .map_err(|e| RuntimeError::ExportError(e))?;
+
         Ok(DB {
             config,
             messages: Vec::new(),
+            database: Some(database),
             log_writer: None,
         })
     }
@@ -103,6 +104,29 @@ impl<'a> Exporter<'a> for DB<'a> {
         // Here we would insert the buffered messages into the database
         self.flush_messages()?;
 
+        // Create graph relations after all messages are exported
+        if let Some(db) = &self.database {
+            eprintln!("Creating graph relations...");
+            let start = std::time::Instant::now();
+            let spinner = indicatif::ProgressBar::new_spinner();
+            let spinner_clone = spinner.clone();
+            spinner.set_message("Creating graph relations");
+
+            let update_display = std::thread::spawn(move || {
+                while !spinner_clone.is_finished() {
+                    let elapsed = start.elapsed();
+                    spinner_clone.set_message(format!("Creating graph relations ({:?})", elapsed));
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+            });
+
+            let _ = db.create_graph().map_err(|e| RuntimeError::ExportError(e))?;
+            spinner.finish_and_clear();
+            update_display.join().unwrap();
+
+            eprintln!("Total time: {:?}", start.elapsed());
+        }
+
         Ok(())
     }
 
@@ -130,6 +154,27 @@ impl<'a> Exporter<'a> for DB<'a> {
 
 impl<'a> DB<'a> {
     fn write_message(&mut self, message: &Message) -> Result<(), RuntimeError> {
+        let deduped_chat_id = match self.config.conversation(message) {
+            Some((_, id)) => Some(*id),
+            None => message.chat_id,
+        };
+
+        // Handle unique_chat_id with fallback
+        let unique_chat_id = match deduped_chat_id {
+            Some(id) => id.to_string(),
+            None => {
+                // Create fallback string using phone_number
+                let phone_number = self.config
+                    .who(message.handle_id, message.is_from_me, &message.destination_caller_id)
+                    .to_string();
+                format!("{}:Missing_chat_id", phone_number)
+            }
+        };
+
+        let thread_name = self.config
+            .conversation(message)
+            .map(|(chatroom, _)| self.config.filename(chatroom));
+
         // Format dates in UTC
         let date = format_utc(&get_utc_time(&message.date, &self.config.offset));
         let date_read = format_utc(&get_utc_time(&message.date_read, &self.config.offset));
@@ -138,83 +183,67 @@ impl<'a> DB<'a> {
         );
         let date_edited = format_utc(&get_utc_time(&message.date_edited, &self.config.offset));
 
-        // Get all the data we need first
-        let formatted_text = {
-            let result = self
-                .format_message(message, 0)
-                .map_err(|e| RuntimeError::DatabaseError(e))?;
-            result
-        };
+        let full_message = self
+            .format_message(message, 0)
+            .map_err(|e| RuntimeError::DatabaseError(e))?;
 
-        let attachment_paths = {
-            let mut paths = Vec::new();
-            if message.num_attachments > 0 {
-                if let Ok(mut attachments) = Attachment::from_message(&self.config.db, message) {
-                    for attachment in attachments.iter_mut() {
-                        if let Ok(path) = self.format_attachment(attachment, message) {
-                            paths.push(path);
-                        }
+        let mut attachment_paths = Vec::new();
+        if message.num_attachments > 0 {
+            if let Ok(mut attachments) = Attachment::from_message(&self.config.db, message) {
+                for attachment in attachments.iter_mut() {
+                    if let Ok(path) = self.format_attachment(attachment, message) {
+                        attachment_paths.push(path);
                     }
                 }
             }
-            paths
+        }
+
+        // Create a Message struct for database insertion
+        let db_message = lib_db::Message {
+            id: None,
+            rowid: message.rowid,
+            guid: message.guid.clone(),
+            text: message.text.clone(),
+            service: message.service.clone(),
+            handle_id: message.handle_id,
+            destination_caller_id: message.destination_caller_id.clone(),
+            subject: message.subject.clone(),
+            date,
+            date_read,
+            date_delivered,
+            is_from_me: message.is_from_me,
+            is_read: message.is_read,
+            item_type: message.item_type,
+            other_handle: message.other_handle,
+            share_status: message.share_status,
+            share_direction: message.share_direction,
+            group_title: message.group_title.clone(),
+            group_action_type: message.group_action_type,
+            associated_message_guid: message.associated_message_guid.clone(),
+            associated_message_type: message.associated_message_type,
+            balloon_bundle_id: message.balloon_bundle_id.clone(),
+            expressive_send_style_id: message.expressive_send_style_id.clone(),
+            thread_originator_guid: message.thread_originator_guid.clone(),
+            thread_originator_part: message.thread_originator_part.clone(),
+            date_edited,
+            associated_message_emoji: message.associated_message_emoji.clone(),
+            chat_id: message.chat_id,
+            unique_chat_id,
+            num_attachments: message.num_attachments,
+            deleted_from: message.deleted_from,
+            num_replies: message.num_replies,
+            full_message,
+            thread_name,
+            attachment_paths,
+            is_deleted: message.is_deleted(),
+            is_edited: message.is_edited(),
+            is_reply: message.is_reply(),
+            phone_number: self.config
+                .who(message.handle_id, message.is_from_me, &message.destination_caller_id)
+                .to_string(),
         };
 
-        // Create object for database insertion
-        let mut msg_object = DbMessage::new();
-
-        msg_object.insert("rowid", message.rowid);
-        msg_object.insert("guid", message.guid.clone());
-        msg_object.insert("text", message.text.as_deref().unwrap_or(""));
-        msg_object.insert("service", message.service.as_deref().unwrap_or(""));
-        msg_object.insert("handle_id", message.handle_id.unwrap_or(-1));
-        msg_object.insert(
-            "destination_caller_id",
-            message.destination_caller_id.as_deref().unwrap_or("")
-        );
-        msg_object.insert("subject", message.subject.as_deref().unwrap_or(""));
-        msg_object.insert("date", date);
-        msg_object.insert("date_read", date_read);
-        msg_object.insert("date_delivered", date_delivered);
-        msg_object.insert("is_from_me", message.is_from_me);
-        msg_object.insert("is_read", message.is_read);
-        msg_object.insert("item_type", message.item_type);
-        msg_object.insert("other_handle", message.other_handle);
-        msg_object.insert("share_status", message.share_status);
-        msg_object.insert("share_direction", message.share_direction);
-        msg_object.insert("group_title", message.group_title.as_deref().unwrap_or(""));
-        msg_object.insert("group_action_type", message.group_action_type);
-        msg_object.insert(
-            "associated_message_guid",
-            message.associated_message_guid.as_deref().unwrap_or("")
-        );
-        msg_object.insert("associated_message_type", message.associated_message_type.unwrap_or(-1));
-        msg_object.insert("balloon_bundle_id", message.balloon_bundle_id.as_deref().unwrap_or(""));
-        msg_object.insert(
-            "expressive_send_style_id",
-            message.expressive_send_style_id.as_deref().unwrap_or("")
-        );
-        msg_object.insert(
-            "thread_originator_guid",
-            message.thread_originator_guid.as_deref().unwrap_or("")
-        );
-        msg_object.insert(
-            "thread_originator_part",
-            message.thread_originator_part.as_deref().unwrap_or("")
-        );
-        msg_object.insert("date_edited", date_edited);
-        msg_object.insert(
-            "associated_message_emoji",
-            message.associated_message_emoji.as_deref().unwrap_or("")
-        );
-        msg_object.insert("chat_id", message.chat_id.unwrap_or(-1));
-        msg_object.insert("num_attachments", message.num_attachments);
-        msg_object.insert("deleted_from", message.deleted_from.unwrap_or(-1));
-        msg_object.insert("num_replies", message.num_replies);
-        msg_object.insert("formatted_text", formatted_text);
-        msg_object.insert("attachment_paths", attachment_paths);
-
-        self.messages.push(msg_object);
+        self.messages.push(db_message);
 
         // Flush messages to database if buffer gets too large
         if self.messages.len() >= 1000 {
@@ -247,10 +276,11 @@ impl<'a> DB<'a> {
         }
     }
     fn flush_messages(&mut self) -> Result<(), RuntimeError> {
-        // Log the batch insert
-
-        // Clear the buffer after logging
-        self.messages.clear();
+        if let Some(db) = &self.database {
+            let messages = std::mem::take(&mut self.messages);
+            db.insert_batch(messages).map_err(|e| RuntimeError::ExportError(e))?;
+            // db.flush().map_err(|e| RuntimeError::ExportError(e))?;
+        }
         Ok(())
     }
 }

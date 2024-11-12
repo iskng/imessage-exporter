@@ -2,16 +2,21 @@
  This module represents the chat to handle join table.
 */
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{ BTreeSet, HashMap, HashSet };
 
 use crate::{
     error::table::TableError,
     tables::table::{
-        Cacheable, Deduplicate, Diagnostic, Table, CHAT_HANDLE_JOIN, CHAT_MESSAGE_JOIN,
+        Cacheable,
+        Deduplicate,
+        Diagnostic,
+        Table,
+        CHAT_HANDLE_JOIN,
+        CHAT_MESSAGE_JOIN,
     },
-    util::output::{done_processing, processing},
+    util::output::{ done_processing, processing },
 };
-use rusqlite::{Connection, Error, Result, Row, Statement};
+use rusqlite::{ Connection, Error, Result, Row, Statement };
 
 /// Represents a single row in the `chat_handle_join` table.
 pub struct ChatToHandle {
@@ -28,8 +33,7 @@ impl Table for ChatToHandle {
     }
 
     fn get(db: &Connection) -> Result<Statement, TableError> {
-        db.prepare(&format!("SELECT * FROM {CHAT_HANDLE_JOIN}"))
-            .map_err(TableError::ChatToHandle)
+        db.prepare(&format!("SELECT * FROM {CHAT_HANDLE_JOIN}")).map_err(TableError::ChatToHandle)
     }
 
     fn extract(chat_to_handle: Result<Result<Self, Error>, Error>) -> Result<Self, TableError> {
@@ -103,8 +107,10 @@ impl Deduplicate for ChatToHandle {
             if let Some(id) = participants_to_unique_chat_id.get(participants) {
                 deduplicated_chats.insert(chat_id.to_owned(), id.to_owned());
             } else {
-                participants_to_unique_chat_id
-                    .insert(participants.to_owned(), unique_chat_identifier);
+                participants_to_unique_chat_id.insert(
+                    participants.to_owned(),
+                    unique_chat_identifier
+                );
                 deduplicated_chats.insert(chat_id.to_owned(), unique_chat_identifier);
                 unique_chat_identifier += 1;
             }
@@ -177,8 +183,8 @@ impl Diagnostic for ChatToHandle {
 
 #[cfg(test)]
 mod tests {
-    use crate::tables::{chat_handle::ChatToHandle, table::Deduplicate};
-    use std::collections::{BTreeSet, HashMap, HashSet};
+    use crate::tables::{ chat_handle::ChatToHandle, table::Deduplicate };
+    use std::collections::{ BTreeSet, HashMap, HashSet };
 
     #[test]
     fn can_dedupe() {
@@ -237,15 +243,9 @@ mod tests {
         input_3.insert(5, BTreeSet::from([2]));
         input_3.insert(6, BTreeSet::from([3]));
 
-        let mut output_1 = ChatToHandle::dedupe(&input_1)
-            .into_iter()
-            .collect::<Vec<(i32, i32)>>();
-        let mut output_2 = ChatToHandle::dedupe(&input_2)
-            .into_iter()
-            .collect::<Vec<(i32, i32)>>();
-        let mut output_3 = ChatToHandle::dedupe(&input_3)
-            .into_iter()
-            .collect::<Vec<(i32, i32)>>();
+        let mut output_1 = ChatToHandle::dedupe(&input_1).into_iter().collect::<Vec<(i32, i32)>>();
+        let mut output_2 = ChatToHandle::dedupe(&input_2).into_iter().collect::<Vec<(i32, i32)>>();
+        let mut output_3 = ChatToHandle::dedupe(&input_3).into_iter().collect::<Vec<(i32, i32)>>();
 
         output_1.sort();
         output_2.sort();
