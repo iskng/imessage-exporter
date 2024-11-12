@@ -116,13 +116,6 @@ FOR $msg IN $messages {
     RELATE $person->sent->$msg;
     RELATE $msg->in_thread->$thread;
 
-    -- If the message is not from me, relate the message to the "me" person
-    IF $msg.is_from_me == false {
-        LET $me = (SELECT * FROM persons WHERE is_me = true LIMIT 1)[0];
-        IF $me {
-            RELATE $msg->to_person->$me;
-        };
-    };
 };
 
 COMMIT TRANSACTION;
