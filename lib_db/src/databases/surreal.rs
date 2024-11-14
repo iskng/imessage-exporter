@@ -1,72 +1,84 @@
-use crate::{ Database, DatabaseConnection, types::Message, LYNX_MESSAGES_TABLE };
+use crate::{
+    Database,
+    types::Message,
+    LYNX_MESSAGES_TABLE,
+    FALLBACK_DB_ENDPOINT,
+    LYNX_NAMESPACE,
+    LYNX_DATABASE,
+    DEFAULT_DB_USERNAME,
+    DEFAULT_DB_PASSWORD,
+};
 
 use surrealdb::opt::auth::Root;
 use surrealdb::Surreal;
-use std::sync::Arc;
 use tokio::runtime::Runtime;
-use surrealdb::sql::Thing;
-use serde::{ Serialize, Deserialize };
-
 use std::env;
-use surrealdb::engine::any;
 use surrealdb::engine::any::Any;
-
 use dirs;
+use std::sync::LazyLock;
 
-pub(crate) struct SurrealDatabase {
-    db: Arc<Surreal<Any>>,
-    connection: DatabaseConnection,
-}
+static DB: LazyLock<Surreal<Any>> = LazyLock::new(Surreal::init);
 
-pub(crate) struct SurrealConfig {
-    pub namespace: String,
-    pub database: String,
-    pub endpoint: String,
-    pub username: String,
-    pub password: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct Record {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    id: Option<Thing>,
-    name: String,
-    value: i32,
-}
+pub(crate) struct SurrealDatabase;
 
 impl SurrealDatabase {
-    pub(crate) async fn create(
-        config: SurrealConfig,
-        connection: DatabaseConnection
-    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        // If ENDPOINT env var exists, use cache dir, otherwise use localhost
-        let endpoint = if env::var("LOCAL").is_ok() {
-            if let Some(cache_dir) = dirs::cache_dir() {
-                let db_path = cache_dir.join("lynx").join("db");
-                // Create the directory if it doesn't exist
-                std::fs::create_dir_all(&db_path)?;
-                format!("rocksdb:{}", db_path.to_string_lossy().to_string())
-            } else {
-                "ws://localhost:8000".to_owned()
-            }
-        } else {
-            "ws://localhost:8000".to_owned()
+    pub(crate) async fn create() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let (username, password) = match (env::var("DBUSER"), env::var("DBPASS")) {
+            (Ok(user), Ok(pass)) => (user, pass),
+            _ => (DEFAULT_DB_USERNAME.to_string(), DEFAULT_DB_PASSWORD.to_string()),
         };
 
-        // Create the Surreal instance. This will create `Surreal<Any>`.
-        let db = any::connect(endpoint).await?;
-        // Sign in as root user
-        db.signin(Root {
-            username: &config.username,
-            password: &config.password,
-        }).await?;
+        let root = Root {
+            username: &username,
+            password: &password,
+        };
 
-        // Select namespace and database
-        db.use_ns(config.namespace).use_db(config.database).await?;
+        let default_path = dirs
+            ::cache_dir()
+            .map(|cache_dir| cache_dir.join("export").join("db"))
+            .unwrap_or_else(|| std::path::PathBuf::from("/export/db"));
 
-        let db = Arc::new(db);
-        let instance = Self { db, connection };
+        let (endpoint, is_websocket) = match env::var("DBPATH") {
+            Ok(path) => {
+                if path == "1" {
+                    if let Err(_) = std::fs::create_dir_all(&default_path) {
+                        (FALLBACK_DB_ENDPOINT.to_string(), true)
+                    } else {
+                        (format!("rocksdb:{}", default_path.to_string_lossy()), false)
+                    }
+                } else {
+                    let path = std::path::PathBuf::from(&path);
+                    if path.is_absolute() || path.components().count() > 0 {
+                        if let Err(_) = std::fs::create_dir_all(&path) {
+                            (FALLBACK_DB_ENDPOINT.to_string(), true)
+                        } else {
+                            (format!("rocksdb:{}", path.to_string_lossy()), false)
+                        }
+                    } else {
+                        (FALLBACK_DB_ENDPOINT.to_string(), true)
+                    }
+                }
+            }
+            Err(_) => {
+                if let Err(_) = std::fs::create_dir_all(&default_path) {
+                    (FALLBACK_DB_ENDPOINT.to_string(), true)
+                } else {
+                    (format!("rocksdb:{}", default_path.to_string_lossy()), false)
+                }
+            }
+        };
 
+        eprintln!("Using database path: {}", endpoint);
+
+        DB.connect(&endpoint).await?;
+
+        if is_websocket {
+            DB.signin(root).await?;
+        }
+
+        DB.use_ns(LYNX_NAMESPACE).use_db(LYNX_DATABASE).await?;
+
+        let instance = Self;
         instance.setup_db()?;
 
         Ok(instance)
@@ -78,16 +90,11 @@ impl Database for SurrealDatabase {
         &self,
         messages: Vec<Message>
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let db = self.db.clone();
-
         let handle = std::thread::spawn(move || {
             let rt = Runtime::new()?;
-
             rt.block_on(async {
-                // Process messages one at a time
                 for message in messages {
-                    // Create with explicit table and ID like in connect.rs example
-                    let _: Option<Message> = db.create(LYNX_MESSAGES_TABLE).content(message).await?;
+                    let _: Option<Message> = DB.create(LYNX_MESSAGES_TABLE).content(message).await?;
                 }
                 Ok(())
             })
@@ -96,11 +103,10 @@ impl Database for SurrealDatabase {
     }
 
     fn flush(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let db = self.db.clone();
         let handle = std::thread::spawn(move || {
             let rt = Runtime::new()?;
             rt.block_on(async move {
-                db.query("COMMIT TRANSACTION").await?;
+                DB.query("COMMIT TRANSACTION").await?;
                 Ok(())
             })
         });
@@ -108,11 +114,10 @@ impl Database for SurrealDatabase {
     }
 
     fn create_graph(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let db = self.db.clone();
         let handle = std::thread::spawn(move || {
             let rt = Runtime::new()?;
             rt.block_on(async move {
-                db.query(
+                DB.query(
                     r#"
                    BEGIN TRANSACTION;
 
@@ -148,12 +153,11 @@ COMMIT TRANSACTION;
     }
 
     fn setup_db(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let db = self.db.clone();
         let handle = std::thread::spawn(move || {
             let rt = Runtime::new()?;
             rt.block_on(async move {
                 // Setup schema with uniqueness constraints
-                db.query(
+                DB.query(
                     "
                     -- Define tables
                     DEFINE TABLE persons SCHEMALESS;
