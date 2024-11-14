@@ -1,7 +1,10 @@
 mod databases;
 mod types;
 
+use std::sync::Arc;
+
 use databases::surreal::SurrealDatabase;
+use tokio::runtime::Runtime;
 pub use types::Message;
 
 pub const LYNX_NAMESPACE: &str = "lynx";
@@ -17,8 +20,10 @@ pub const FALLBACK_DB_ENDPOINT: &str = "ws://localhost:8000";
 #[derive(Debug, Clone)]
 pub enum DatabaseType {
     Surreal,
+    // Add other database types here
 }
 
+// Public database interface
 pub trait Database: Send + Sync {
     fn insert_batch(
         &self,
@@ -29,15 +34,29 @@ pub trait Database: Send + Sync {
     fn setup_db(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }
 
+// Add this struct to hold shared resources
+pub struct DatabaseConnection {
+    pub runtime: Arc<Runtime>,
+    pub db_type: DatabaseType,
+}
+
 impl dyn Database {
     pub fn new(
         db_type: DatabaseType
     ) -> Result<Box<dyn Database + Send + Sync>, Box<dyn std::error::Error + Send + Sync>> {
+        // Create the runtime once at the top level
+        let runtime = Arc::new(Runtime::new()?);
+
+        let connection = DatabaseConnection {
+            runtime: runtime.clone(),
+            db_type,
+        };
+
         match db_type {
             DatabaseType::Surreal => {
-                let db = tokio::runtime::Runtime
-                    ::new()?
-                    .block_on(async { SurrealDatabase::create().await })?;
+                // Use the shared runtime instead of creating a new one
+                let db = runtime.block_on(async { SurrealDatabase::create(connection).await })?;
+
                 Ok(Box::new(db) as Box<dyn Database + Send + Sync>)
             }
         }

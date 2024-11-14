@@ -2086,6 +2086,7 @@ dependencies = [
 name = "lib_db"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "dirs",
  "indicatif",
  "serde",
