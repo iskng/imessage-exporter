@@ -95,6 +95,8 @@ impl SurrealDatabase {
                     } else {
                         (format!("rocksdb:{}", default_path.to_string_lossy()), false)
                     }
+                } else if path == "remote" {
+                    (FALLBACK_DB_ENDPOINT.to_string(), true)
                 } else {
                     let path = std::path::PathBuf::from(&path);
                     if path.is_absolute() || path.components().count() > 0 {
