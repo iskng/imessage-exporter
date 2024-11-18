@@ -1,5 +1,30 @@
 use serde::{ Serialize, Deserialize };
-use surrealdb::sql::Thing;
+use surrealdb::sql::{ Thing, Datetime };
+use chrono::{ DateTime, Utc };
+
+// Custom serialization module for DateTime<Utc>
+mod datetime_conversion {
+    use super::*;
+    use serde::{ Deserializer, Serializer };
+
+    pub fn serialize<S>(datetime: &Option<DateTime<Utc>>, serializer: S) -> Result<S::Ok, S::Error>
+        where S: Serializer
+    {
+        match datetime {
+            Some(dt) => Datetime::from(dt.clone()).serialize(serializer),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<DateTime<Utc>>, D::Error>
+        where D: Deserializer<'de>
+    {
+        Option::<Datetime>
+            ::deserialize(deserializer)?
+            .map(|dt| dt.into())
+            .map_or(Ok(None), |dt| Ok(Some(dt)))
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Record {
@@ -8,6 +33,7 @@ struct Record {
     name: String,
     value: i32,
 }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -19,9 +45,12 @@ pub struct Message {
     pub handle_id: Option<i32>,
     pub destination_caller_id: Option<String>,
     pub subject: Option<String>,
-    pub date: String,
-    pub date_read: String,
-    pub date_delivered: String,
+    #[serde(with = "datetime_conversion")]
+    pub date: Option<DateTime<Utc>>,
+    #[serde(with = "datetime_conversion")]
+    pub date_read: Option<DateTime<Utc>>,
+    #[serde(with = "datetime_conversion")]
+    pub date_delivered: Option<DateTime<Utc>>,
     pub is_from_me: bool,
     pub is_read: bool,
     pub item_type: i32,
@@ -36,7 +65,8 @@ pub struct Message {
     pub expressive_send_style_id: Option<String>,
     pub thread_originator_guid: Option<String>,
     pub thread_originator_part: Option<String>,
-    pub date_edited: String,
+    #[serde(with = "datetime_conversion")]
+    pub date_edited: Option<DateTime<Utc>>,
     pub chat_id: Option<i32>,
     pub unique_chat_id: String,
     pub num_attachments: i32,

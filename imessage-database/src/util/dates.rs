@@ -42,10 +42,10 @@ pub fn get_local_time(date_stamp: &i64, offset: &i64) -> Result<DateTime<Local>,
 /// # Returns
 ///
 /// A UTC `NaiveDateTime` if valid, or a `MessageError` if the timestamp is invalid
-pub fn get_utc_time(date_stamp: &i64, offset: &i64) -> Result<NaiveDateTime, MessageError> {
-    let utc_stamp = DateTime::from_timestamp(date_stamp / TIMESTAMP_FACTOR + offset, 0)
-        .ok_or(MessageError::InvalidTimestamp(*date_stamp))?
-        .naive_utc();
+pub fn get_utc_time(date_stamp: &i64, offset: &i64) -> Result<DateTime<Utc>, MessageError> {
+    let utc_stamp = DateTime::from_timestamp(date_stamp / TIMESTAMP_FACTOR + offset, 0).ok_or(
+        MessageError::InvalidTimestamp(*date_stamp)
+    )?;
     Ok(utc_stamp)
 }
 /// Format a UTC date from the iMessage table for reading
@@ -60,7 +60,7 @@ pub fn get_utc_time(date_stamp: &i64, offset: &i64) -> Result<NaiveDateTime, Mes
 /// let formatted = format_utc(&Ok(date));
 /// println!("{formatted}"); // Jan 01, 2020 12:00:00 AM
 /// ```
-pub fn format_utc(date: &Result<NaiveDateTime, MessageError>) -> String {
+pub fn format_utc(date: &Result<DateTime<Utc>, MessageError>) -> String {
     match date {
         Ok(d) => d.to_string(),
         Err(why) => why.to_string(),

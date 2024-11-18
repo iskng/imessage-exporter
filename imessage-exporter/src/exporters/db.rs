@@ -42,6 +42,7 @@ use imessage_database::{
 };
 use super::exporter::{ BalloonFormatter, Writer };
 use lib_db::{ Database, DatabaseType };
+use chrono::NaiveDateTime;
 
 pub struct DB<'a> {
     /// Data that is setup from the application's runtime
@@ -177,12 +178,10 @@ impl<'a> DB<'a> {
             .map(|(chatroom, _)| self.config.filename(chatroom));
 
         // Format dates in UTC
-        let date = format_utc(&get_utc_time(&message.date, &self.config.offset));
-        let date_read = format_utc(&get_utc_time(&message.date_read, &self.config.offset));
-        let date_delivered = format_utc(
-            &get_utc_time(&message.date_delivered, &self.config.offset)
-        );
-        let date_edited = format_utc(&get_utc_time(&message.date_edited, &self.config.offset));
+        let date = &get_utc_time(&message.date, &self.config.offset);
+        let date_read = &get_utc_time(&message.date_read, &self.config.offset);
+        let date_delivered = &get_utc_time(&message.date_delivered, &self.config.offset);
+        let date_edited = &get_utc_time(&message.date_edited, &self.config.offset);
 
         let full_message = self
             .format_message(message, 0)
@@ -209,9 +208,9 @@ impl<'a> DB<'a> {
             handle_id: message.handle_id,
             destination_caller_id: message.destination_caller_id.clone(),
             subject: message.subject.clone(),
-            date,
-            date_read,
-            date_delivered,
+            date: date.as_ref().ok().cloned(),
+            date_read: date_read.as_ref().ok().cloned(),
+            date_delivered: date_delivered.as_ref().ok().cloned(),
             is_from_me: message.is_from_me,
             is_read: message.is_read,
             item_type: message.item_type,
@@ -226,7 +225,7 @@ impl<'a> DB<'a> {
             expressive_send_style_id: message.expressive_send_style_id.clone(),
             thread_originator_guid: message.thread_originator_guid.clone(),
             thread_originator_part: message.thread_originator_part.clone(),
-            date_edited,
+            date_edited: date_edited.as_ref().ok().cloned(),
             associated_message_emoji: message.associated_message_emoji.clone(),
             chat_id: message.chat_id,
             unique_chat_id,

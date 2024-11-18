@@ -1888,6 +1888,7 @@ dependencies = [
 name = "imessage-exporter"
 version = "0.0.0"
 dependencies = [
+ "chrono",
  "clap",
  "fdlimit",
  "filetime",
@@ -2087,6 +2088,7 @@ name = "lib_db"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chrono",
  "dirs",
  "indicatif",
  "serde",

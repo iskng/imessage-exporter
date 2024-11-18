@@ -2,6 +2,7 @@ mod databases;
 mod types;
 
 use std::sync::Arc;
+use chrono::{ DateTime, TimeZone, Utc };
 
 use databases::surreal::SurrealDatabase;
 use tokio::runtime::Runtime;
@@ -69,10 +70,15 @@ mod tests {
     use std::time::Duration;
     use std::thread;
     use std::sync::Arc;
+    use chrono::{ DateTime, TimeZone, Utc };
 
     // Define static strings for test data
-    const TEST_DATE: &'static str = "2024-01-01";
-    const TEST_SERVICE: &'static str = "iMessage";
+    const TEST_DATE: &'static str = "2024-01-01T00:00:00Z";
+
+    // Helper function to parse test date
+    fn get_test_datetime() -> Option<DateTime<Utc>> {
+        Some(Utc.datetime_from_str(TEST_DATE, "%Y-%m-%dT%H:%M:%SZ").unwrap())
+    }
 
     // Define the test message once
     fn get_test_message(i: usize) -> Message {
@@ -86,13 +92,13 @@ mod tests {
             rowid: i as i32,
             guid: format!("test-guid-{}", i),
             text: Some(format!("Test message {}", i)),
-            service: Some(TEST_SERVICE.to_string()),
+            service: Some("iMessage".to_string()),
             handle_id: Some(i as i32), // Unique handle_id
             destination_caller_id: None,
             subject: None,
-            date: TEST_DATE.to_string(),
-            date_read: TEST_DATE.to_string(),
-            date_delivered: TEST_DATE.to_string(),
+            date: get_test_datetime(),
+            date_read: get_test_datetime(),
+            date_delivered: get_test_datetime(),
             is_from_me: i % 2 == 0,
             is_read: true,
             item_type: 0,
@@ -107,7 +113,7 @@ mod tests {
             expressive_send_style_id: None,
             thread_originator_guid: None,
             thread_originator_part: None,
-            date_edited: TEST_DATE.to_string(),
+            date_edited: get_test_datetime(),
             associated_message_emoji: None,
             chat_id,
             unique_chat_id,
