@@ -42,6 +42,7 @@ pub struct Message {
     pub guid: String,
     pub text: Option<String>,
     pub service: Option<String>,
+    pub platform: String,
     pub handle_id: Option<i32>,
     pub destination_caller_id: Option<String>,
     pub subject: Option<String>,

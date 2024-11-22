@@ -181,6 +181,7 @@ impl<'a> DB<'a> {
             rowid: message.rowid,
             guid: message.guid.clone(),
             text: message.text.clone(),
+            platform: "IMESSAGE".to_string(),
             service: message.service.clone(),
             handle_id: message.handle_id,
             destination_caller_id: message.destination_caller_id.clone(),

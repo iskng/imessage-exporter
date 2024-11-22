@@ -90,6 +90,7 @@ mod tests {
             rowid: i as i32,
             guid: format!("test-guid-{}", i),
             text: Some(format!("Test message {}", i)),
+            platform: "IMESSAGE".to_string(),
             service: Some("iMessage".to_string()),
             handle_id: Some(i as i32), // Unique handle_id
             destination_caller_id: None,
