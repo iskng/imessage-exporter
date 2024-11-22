@@ -31,7 +31,6 @@ pub trait Database: Send + Sync {
         messages: Vec<Message>
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
     fn flush(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
-    fn setup_db(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }
 
 // Add this struct to hold shared resources

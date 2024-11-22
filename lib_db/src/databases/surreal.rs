@@ -123,7 +123,6 @@ impl SurrealDatabase {
         DB.use_ns(LYNX_NAMESPACE).use_db(LYNX_DATABASE).await?;
 
         let instance = Self { connection };
-        instance.setup_db()?;
 
         Ok(instance)
     }
@@ -152,37 +151,6 @@ impl Database for SurrealDatabase {
             let rt = Runtime::new()?;
             rt.block_on(async move {
                 DB.query("COMMIT TRANSACTION").await?;
-                Ok(())
-            })
-        });
-        handle.join().unwrap()
-    }
-
-    fn setup_db(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let handle = std::thread::spawn(move || {
-            let rt = Runtime::new()?;
-            rt.block_on(async move {
-                // Setup schema with uniqueness constraints
-                DB.query(
-                    "
-                    -- Define tables
-                    DEFINE TABLE persons SCHEMALESS;
-                    DEFINE TABLE threads SCHEMALESS;
-                    DEFINE TABLE messages SCHEMALESS;
-                    DEFINE TABLE messaged_in SCHEMALESS;
-                    DEFINE TABLE sent SCHEMALESS;
-                    DEFINE TABLE in_thread SCHEMALESS;
-
-                    -- Define unique fields
-                    DEFINE FIELD phone_number ON persons TYPE string ASSERT $value != NONE AND $value != '';
-                    DEFINE INDEX person_phone ON persons FIELDS phone_number UNIQUE;
-
-                    DEFINE FIELD unique_chat_id ON threads TYPE string ASSERT $value != NONE AND $value != '';
-                    DEFINE INDEX thread_chat_id ON threads FIELDS unique_chat_id UNIQUE;
-                    
-                    "
-                ).await?;
-
                 Ok(())
             })
         });
