@@ -105,29 +105,6 @@ impl<'a> Exporter<'a> for DB<'a> {
         // Here we would insert the buffered messages into the database
         self.flush_messages()?;
 
-        // Create graph relations after all messages are exported
-        if let Some(db) = &self.database {
-            eprintln!("Creating graph relations...");
-            let start = std::time::Instant::now();
-            let spinner = indicatif::ProgressBar::new_spinner();
-            let spinner_clone = spinner.clone();
-            spinner.set_message("Creating graph relations");
-
-            let update_display = std::thread::spawn(move || {
-                while !spinner_clone.is_finished() {
-                    let elapsed = start.elapsed();
-                    spinner_clone.set_message(format!("Creating graph relations ({:?})", elapsed));
-                    std::thread::sleep(std::time::Duration::from_millis(100));
-                }
-            });
-
-            let _ = db.create_graph().map_err(|e| RuntimeError::ExportError(e))?;
-            spinner.finish_and_clear();
-            update_display.join().unwrap();
-
-            eprintln!("Total time: {:?}", start.elapsed());
-        }
-
         Ok(())
     }
 

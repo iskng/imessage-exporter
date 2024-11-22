@@ -31,7 +31,6 @@ pub trait Database: Send + Sync {
         messages: Vec<Message>
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
     fn flush(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
-    fn create_graph(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
     fn setup_db(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }
 
@@ -140,7 +139,6 @@ mod tests {
         db.insert_batch(messages).expect("Failed to insert messages");
 
         thread::sleep(Duration::from_millis(100));
-        db.create_graph().expect("Failed to create graph");
         // Commit any pending transactions
         db.flush().expect("Failed to flush changes");
     }
