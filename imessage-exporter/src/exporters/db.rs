@@ -146,7 +146,7 @@ impl<'a> DB<'a> {
                     .who(message.handle_id, message.is_from_me, &message.destination_caller_id)
                     .to_string();
 
-                format!("{}:{}", phone_number, rand::thread_rng().gen_range(1..=100000))
+                phone_number
             }
         };
 
