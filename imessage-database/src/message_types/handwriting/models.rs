@@ -64,13 +64,15 @@ impl HandwrittenMessage {
         svg.push_str(&format!("<createdAt>{}</createdAt>\n", self.created_at));
         svg.push_str("</metadata>\n");
         svg.push_str("<style>\n");
-        svg.push_str(r#"    .line {
+        svg.push_str(
+            r#"    .line {
         fill: none;
         stroke: black;
         stroke-linecap: round;
         stroke-linejoin: round;
     }
-"#);
+"#,
+        );
         svg.push_str("</style>\n");
         generate_strokes(&mut svg, &self.strokes);
         svg.push_str("</svg>\n");
@@ -81,18 +83,27 @@ impl HandwrittenMessage {
     pub fn render_ascii(&self, max_height: usize) -> String {
         // Create a blank canvas filled with spaces
         let h = max_height.min(self.height as usize);
-        let w = ((self.width as usize) * h) / (self.height as usize);
+        let w = ((self.width as usize) * h)
+            .checked_div(self.height as usize)
+            .unwrap_or(0);
         let mut canvas = vec![vec![' '; w]; h];
 
         // Plot the lines on the canvas
         // Width is only used when drawing the line on an SVG
-        fit_strokes(&self.strokes, w as u16, h as u16, self.height, self.width, 1)
-            .iter()
-            .for_each(|line| {
-                line.windows(2).for_each(|window| {
-                    draw_line(&mut canvas, &window[0], &window[1]);
-                });
+        fit_strokes(
+            &self.strokes,
+            w as u16,
+            h as u16,
+            self.height,
+            self.width,
+            1,
+        )
+        .iter()
+        .for_each(|line| {
+            line.windows(2).for_each(|window| {
+                draw_line(&mut canvas, &window[0], &window[1]);
             });
+        });
 
         // Convert the canvas to a string
         let mut output = String::with_capacity(h * (w + 1));
@@ -152,7 +163,14 @@ fn generate_strokes(svg: &mut String, strokes: &[Vec<Point>]) {
             points.iter().for_each(|point| {
                 points_svg.push_str(&format!(" {},{}", point.x, point.y));
             });
-            segments.push_str(format!(r#"<polyline class="line" points="{}" stroke-width="{}" />"#, points_svg.trim_start(), width).as_str());
+            segments.push_str(
+                format!(
+                    r#"<polyline class="line" points="{}" stroke-width="{}" />"#,
+                    points_svg.trim_start(),
+                    width
+                )
+                .as_str(),
+            );
             segments.push('\n');
         });
         svg.push_str(segments.as_str());
@@ -178,7 +196,7 @@ fn group_points(stroke: &[Point]) -> Vec<(u16, Vec<&Point>)> {
     });
 
     if !segment.is_empty() {
-        segment.push(segment[segment.len()-1]);
+        segment.push(segment[segment.len() - 1]);
         groups.push((curr, segment));
     }
     groups
@@ -202,7 +220,7 @@ fn fit_strokes(
                     Point {
                         x: resize(point.x, width, max_x),
                         y: resize(point.y, height, max_y),
-                        width: resize(point.width, 9, max_width)+1,
+                        width: resize(point.width, 9, max_width) + 1,
                     }
                 })
                 .collect()
@@ -212,17 +230,23 @@ fn fit_strokes(
 
 /// Resize converts `v` from a coordinate where `max_v` is the current height/width and `box_size` is the wanted height/width.
 fn resize(v: u16, box_size: u16, max_v: u16) -> u16 {
-    (v as i64 * box_size as i64 / max_v as i64) as u16
+    (v as i64 * box_size as i64)
+        .checked_div(max_v as i64)
+        .unwrap_or(0) as u16
 }
 
 /// Iterates through each point in each stroke and extracts the maximum `x`, `y`, and `width` values.
 fn get_max_dimension(strokes: &[Vec<Point>]) -> (u16, u16, u16) {
-    strokes
-        .iter()
-        .flat_map(|stroke| stroke.iter())
-        .fold((0, 0, 0), |(max_x, max_y, max_width), point| {
-            (max_x.max(point.x), max_y.max(point.y), max_width.max(point.width-1))
-        })
+    strokes.iter().flat_map(|stroke| stroke.iter()).fold(
+        (0, 0, 0),
+        |(max_x, max_y, max_width), point| {
+            (
+                max_x.max(point.x),
+                max_y.max(point.y),
+                max_width.max(point.width - 1),
+            )
+        },
+    )
 }
 
 /// Parses raw stroke data into an array of strokes.
@@ -318,6 +342,7 @@ fn parse_coordinates(b1: u8, b2: u8) -> u16 {
 #[cfg(test)]
 mod tests {
     use crate::message_types::handwriting::models::{HandwrittenMessage, Point};
+
     use std::env::current_dir;
     use std::fs::File;
     use std::io::Read;

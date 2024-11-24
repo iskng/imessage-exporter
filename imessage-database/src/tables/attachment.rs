@@ -44,6 +44,20 @@ pub enum MediaType<'a> {
     Unknown,
 }
 
+impl<'a> MediaType<'a> {
+    pub fn as_mime_type(&self) -> String {
+        match self {
+            MediaType::Image(subtype) => format!("image/{subtype}"),
+            MediaType::Video(subtype) => format!("video/{subtype}"),
+            MediaType::Audio(subtype) => format!("audio/{subtype}"),
+            MediaType::Text(subtype) => format!("text/{subtype}"),
+            MediaType::Application(subtype) => format!("application/{subtype}"),
+            MediaType::Other(mime) => mime.to_string(),
+            MediaType::Unknown => String::new(),
+        }
+    }
+}
+
 /// Represents a single row in the `attachment` table.
 #[derive(Debug)]
 pub struct Attachment {
@@ -61,6 +75,8 @@ pub struct Attachment {
     /// `true` if the attachment was a sticker, else `false`
     pub is_sticker: bool,
     pub hide_attachment: i32,
+    /// The prompt used to generate a Genmoji
+    pub emoji_description: Option<String>,
     /// Auxiliary data to denote that an attachment has been copied
     pub copied_path: Option<PathBuf>,
 }
@@ -76,6 +92,7 @@ impl Table for Attachment {
             total_bytes: row.get("total_bytes").unwrap_or_default(),
             is_sticker: row.get("is_sticker").unwrap_or(false),
             hide_attachment: row.get("hide_attachment").unwrap_or(0),
+            emoji_description: row.get("emoji_image_short_description").unwrap_or(None),
             copied_path: None,
         })
     }
@@ -454,6 +471,7 @@ mod tests {
             total_bytes: 100,
             is_sticker: false,
             hide_attachment: 0,
+            emoji_description: None,
             copied_path: None,
         }
     }
