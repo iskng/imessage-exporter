@@ -71,7 +71,7 @@ pub struct Attachment {
     /// The name of the file when sent or received
     pub transfer_name: Option<String>,
     /// The total amount of data transferred over the network (not necessarily the size of the file)
-    pub total_bytes: u64,
+    pub total_bytes: i64,
     /// `true` if the attachment was a sticker, else `false`
     pub is_sticker: bool,
     pub hide_attachment: i32,
@@ -254,7 +254,7 @@ impl Attachment {
 
     /// Get a human readable file size for an attachment
     pub fn file_size(&self) -> String {
-        format_file_size(self.total_bytes)
+        format_file_size(self.total_bytes.try_into().unwrap_or(0))
     }
 
     /// Get the total attachment bytes referenced in the table
@@ -262,24 +262,21 @@ impl Attachment {
         db: &Connection,
         context: &QueryContext,
     ) -> Result<u64, TableError> {
-        let mut bytes_query = if context.has_filters() {
+        let mut bytes_query = if context.start.is_some() || context.end.is_some() {
             let mut statement = format!("SELECT SUM(total_bytes) FROM {ATTACHMENT} a");
 
-            if context.has_filters() {
-                statement.push_str(" WHERE ");
-                if let Some(start) = context.start {
-                    statement.push_str(&format!(
-                        "    a.created_date >= {}",
-                        start / TIMESTAMP_FACTOR
-                    ));
+            statement.push_str(" WHERE ");
+            if let Some(start) = context.start {
+                statement.push_str(&format!(
+                    "    a.created_date >= {}",
+                    start / TIMESTAMP_FACTOR
+                ));
+            }
+            if let Some(end) = context.end {
+                if context.start.is_some() {
+                    statement.push_str(" AND ");
                 }
-                if let Some(end) = context.end {
-                    if context.start.is_some() {
-                        statement.push_str(" AND ");
-                    }
-                    statement
-                        .push_str(&format!("    a.created_date <= {}", end / TIMESTAMP_FACTOR));
-                }
+                statement.push_str(&format!("    a.created_date <= {}", end / TIMESTAMP_FACTOR));
             }
 
             db.prepare(&statement).map_err(TableError::Attachment)?
@@ -289,7 +286,8 @@ impl Attachment {
         };
 
         bytes_query
-            .query_row([], |r| r.get(0))
+            .query_row([], |r| -> Result<i64> { r.get(0) })
+            .map(|res: i64| res.try_into().unwrap_or(0))
             .map_err(TableError::Attachment)
     }
 
@@ -455,11 +453,17 @@ impl Attachment {
 #[cfg(test)]
 mod tests {
     use crate::{
-        tables::attachment::{Attachment, MediaType, DEFAULT_ATTACHMENT_ROOT},
-        util::platform::Platform,
+        tables::{
+            attachment::{Attachment, MediaType, DEFAULT_ATTACHMENT_ROOT},
+            table::get_connection,
+        },
+        util::{dirs::default_db_path, platform::Platform, query_context::QueryContext},
     };
 
-    use std::path::{Path, PathBuf};
+    use std::{
+        collections::BTreeSet,
+        path::{Path, PathBuf},
+    };
 
     fn sample_attachment() -> Attachment {
         Attachment {
@@ -657,6 +661,76 @@ mod tests {
     }
 
     #[test]
+    fn can_get_attachment_bytes_no_filter() {
+        let db_path = default_db_path();
+        let connection = get_connection(&db_path).unwrap();
+
+        let context = QueryContext::default();
+
+        assert!(Attachment::get_total_attachment_bytes(&connection, &context).is_ok());
+    }
+
+    #[test]
+    fn can_get_attachment_bytes_start_filter() {
+        let db_path = default_db_path();
+        let connection = get_connection(&db_path).unwrap();
+
+        let mut context = QueryContext::default();
+        context.set_start("2020-01-01").unwrap();
+
+        assert!(Attachment::get_total_attachment_bytes(&connection, &context).is_ok());
+    }
+
+    #[test]
+    fn can_get_attachment_bytes_end_filter() {
+        let db_path = default_db_path();
+        let connection = get_connection(&db_path).unwrap();
+
+        let mut context = QueryContext::default();
+        context.set_end("2020-01-01").unwrap();
+
+        assert!(Attachment::get_total_attachment_bytes(&connection, &context).is_ok());
+    }
+
+    #[test]
+    fn can_get_attachment_bytes_start_end_filter() {
+        let db_path = default_db_path();
+        let connection = get_connection(&db_path).unwrap();
+
+        let mut context = QueryContext::default();
+        context.set_start("2020-01-01").unwrap();
+        context.set_end("2021-01-01").unwrap();
+
+        assert!(Attachment::get_total_attachment_bytes(&connection, &context).is_ok());
+    }
+
+    #[test]
+    fn can_get_attachment_bytes_contact_filter() {
+        let db_path = default_db_path();
+        let connection = get_connection(&db_path).unwrap();
+
+        let mut context = QueryContext::default();
+        context.set_selected_chat_ids(BTreeSet::from([1, 2, 3]));
+        context.set_selected_handle_ids(BTreeSet::from([1, 2, 3]));
+
+        assert!(Attachment::get_total_attachment_bytes(&connection, &context).is_ok());
+    }
+
+    #[test]
+    fn can_get_attachment_bytes_contact_date_filter() {
+        let db_path = default_db_path();
+        let connection = get_connection(&db_path).unwrap();
+
+        let mut context = QueryContext::default();
+        context.set_start("2020-01-01").unwrap();
+        context.set_end("2021-01-01").unwrap();
+        context.set_selected_chat_ids(BTreeSet::from([1, 2, 3]));
+        context.set_selected_handle_ids(BTreeSet::from([1, 2, 3]));
+
+        assert!(Attachment::get_total_attachment_bytes(&connection, &context).is_ok());
+    }
+
+    #[test]
     fn can_get_file_size_bytes() {
         let attachment = sample_attachment();
 
@@ -690,8 +764,8 @@ mod tests {
     #[test]
     fn can_get_file_size_cap() {
         let mut attachment: Attachment = sample_attachment();
-        attachment.total_bytes = u64::MAX;
+        attachment.total_bytes = i64::MAX;
 
-        assert_eq!(attachment.file_size(), String::from("16777216.00 TB"));
+        assert_eq!(attachment.file_size(), String::from("8388608.00 TB"));
     }
 }
