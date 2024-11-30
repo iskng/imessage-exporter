@@ -1,8 +1,8 @@
+use serde::{Deserialize, Serialize};
 use surrealdb::engine::remote::ws::Ws;
 use surrealdb::opt::auth::Root;
-use surrealdb::Surreal;
-use serde::{ Deserialize, Serialize };
 use surrealdb::sql::Thing;
+use surrealdb::Surreal;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Record {
@@ -21,7 +21,8 @@ async fn main() -> surrealdb::Result<()> {
     db.signin(Root {
         username: "root",
         password: "root",
-    }).await?;
+    })
+    .await?;
 
     // Select a specific namespace / database
     db.use_ns("lynx").use_db("lynx").await?;
@@ -39,7 +40,10 @@ async fn main() -> surrealdb::Result<()> {
     println!("All Records: {:?}", records);
 
     // Perform a custom query
-    let mut response = db.query("SELECT * FROM test WHERE value > $min").bind(("min", 30)).await?;
+    let mut response = db
+        .query("SELECT * FROM test WHERE value > $min")
+        .bind(("min", 30))
+        .await?;
     let result: Vec<Record> = response.take(0)?;
     println!("Query Result: {:?}", result);
 

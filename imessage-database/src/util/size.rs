@@ -1,6 +1,6 @@
 /*!
- Contains logic for creating human-readable file size strings.
- */
+Contains logic for creating human-readable file size strings.
+*/
 
 const DIVISOR: f64 = 1024.;
 const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];

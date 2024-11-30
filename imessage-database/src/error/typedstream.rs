@@ -4,7 +4,8 @@
 
 use std::{
     array::TryFromSliceError,
-    fmt::{Display, Formatter, Result}, str::Utf8Error,
+    fmt::{Display, Formatter, Result},
+    str::Utf8Error,
 };
 
 /// Errors that can happen when parsing `typedstream` data

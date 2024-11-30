@@ -64,7 +64,7 @@ pub enum Style {
 }
 
 /// Animated text effect container
-/// 
+///
 /// A message's [`typedstream`](crate::util::typedstream) contains an [`i64`] identifier under the key `__kIMTextEffectAttributeName`.
 ///
 /// Read more about text styles [here](https://www.apple.com/newsroom/2024/06/ios-18-makes-iphone-more-personal-capable-and-intelligent-than-ever/).
@@ -92,7 +92,7 @@ pub enum Animation {
 
 impl Animation {
     /// Get the animation from its ID given in a message's [`typedstream`](crate::util::typedstream) data, under the `__kIMTextEffectAttributeName` key.
-    /// 
+    ///
     /// # Example:
     ///
     /// ```

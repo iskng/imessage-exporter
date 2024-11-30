@@ -1,6 +1,6 @@
 use std::{
     cmp::min,
-    collections::{ BTreeSet, HashMap, HashSet },
+    collections::{BTreeSet, HashMap, HashSet},
     fs::create_dir_all,
     path::PathBuf,
 };
@@ -11,17 +11,11 @@ use rusqlite::Connection;
 
 use crate::{
     app::{
-        attachment_manager::AttachmentManager,
-        converter::Converter,
-        error::RuntimeError,
-        export_type::ExportType,
-        options::Options,
-        sanitizers::sanitize_filename,
+        attachment_manager::AttachmentManager, converter::Converter, error::RuntimeError,
+        export_type::ExportType, options::Options, sanitizers::sanitize_filename,
     },
-    exporters::{ csv::CSV, db::DB },
-    Exporter,
-    HTML,
-    TXT,
+    exporters::{csv::CSV, db::DB},
+    Exporter, HTML, TXT,
 };
 
 use imessage_database::{
@@ -33,19 +27,11 @@ use imessage_database::{
         handle::Handle,
         messages::Message,
         table::{
-            get_connection,
-            get_db_size,
-            Cacheable,
-            Deduplicate,
-            Diagnostic,
-            ATTACHMENTS_DIR,
-            MAX_LENGTH,
-            ME,
-            ORPHANED,
-            UNKNOWN,
+            get_connection, get_db_size, Cacheable, Deduplicate, Diagnostic, ATTACHMENTS_DIR,
+            MAX_LENGTH, ME, ORPHANED, UNKNOWN,
         },
     },
-    util::{ dates::get_offset, size::format_file_size },
+    util::{dates::get_offset, size::format_file_size},
 };
 
 /// Stores the application state and handles application lifecycle
@@ -119,14 +105,13 @@ impl Config {
                 }
                 path.display().to_string()
             }
-            None =>
-                attachment
-                    .resolved_attachment_path(
-                        &self.options.platform,
-                        &self.options.db_path,
-                        self.options.attachment_root.as_deref()
-                    )
-                    .unwrap_or(attachment.filename().to_string()),
+            None => attachment
+                .resolved_attachment_path(
+                    &self.options.platform,
+                    &self.options.db_path,
+                    self.options.attachment_root.as_deref(),
+                )
+                .unwrap_or(attachment.filename().to_string()),
         }
     }
 
@@ -147,14 +132,21 @@ impl Config {
         let filename = match &chatroom.display_name() {
             // If there is a display name, use that
             Some(name) => {
-                format!("{} - {}", &name[..min(MAX_LENGTH, name.len())], chatroom.rowid)
+                format!(
+                    "{} - {}",
+                    &name[..min(MAX_LENGTH, name.len())],
+                    chatroom.rowid
+                )
             }
             // Fallback if there is no name set
             None => {
                 if let Some(participants) = self.chatroom_participants.get(&chatroom.rowid) {
                     self.filename_from_participants(participants)
                 } else {
-                    eprintln!("Found error: message chat ID {} has no members!", chatroom.rowid);
+                    eprintln!(
+                        "Found error: message chat ID {} has no members!",
+                        chatroom.rowid
+                    );
                     chatroom.chat_identifier.clone()
                 }
             }
@@ -215,9 +207,8 @@ impl Config {
         eprintln!("[1/4] Caching chats...");
         let chatrooms = Chat::cache(&conn).map_err(RuntimeError::DatabaseError)?;
         eprintln!("[2/4] Caching chatrooms...");
-        let chatroom_participants = ChatToHandle::cache(&conn).map_err(
-            RuntimeError::DatabaseError
-        )?;
+        let chatroom_participants =
+            ChatToHandle::cache(&conn).map_err(RuntimeError::DatabaseError)?;
         eprintln!("[3/4] Caching participants...");
         let participants = Handle::cache(&conn).map_err(RuntimeError::DatabaseError)?;
         eprintln!("[4/4] Caching tapbacks...");
@@ -249,42 +240,38 @@ impl Config {
     fn ensure_free_space(&self) -> Result<(), RuntimeError> {
         // Export size is usually about 6% the size of the db; we divide by 10 to over-estimate about 10% of the total size
         // for some safe headroom
-        let total_db_size = get_db_size(&self.options.db_path).map_err(
-            RuntimeError::DatabaseError
-        )?;
+        let total_db_size =
+            get_db_size(&self.options.db_path).map_err(RuntimeError::DatabaseError)?;
         let mut estimated_export_size = total_db_size / 10;
 
-        let free_space_at_location = available_space(&self.options.export_path).map_err(
-            RuntimeError::DiskError
-        )?;
+        let free_space_at_location =
+            available_space(&self.options.export_path).map_err(RuntimeError::DiskError)?;
 
         // Validate that there is enough disk space free to write the export
         if let AttachmentManager::Disabled = self.options.attachment_manager {
             if estimated_export_size >= free_space_at_location {
-                return Err(
-                    RuntimeError::NotEnoughAvailableSpace(
-                        estimated_export_size,
-                        free_space_at_location
-                    )
-                );
+                return Err(RuntimeError::NotEnoughAvailableSpace(
+                    estimated_export_size,
+                    free_space_at_location,
+                ));
             }
         } else {
-            let total_attachment_size = Attachment::get_total_attachment_bytes(
-                &self.db,
-                &self.options.query_context
-            ).map_err(RuntimeError::DatabaseError)?;
+            let total_attachment_size =
+                Attachment::get_total_attachment_bytes(&self.db, &self.options.query_context)
+                    .map_err(RuntimeError::DatabaseError)?;
             estimated_export_size += total_attachment_size;
             if estimated_export_size + total_attachment_size >= free_space_at_location {
-                return Err(
-                    RuntimeError::NotEnoughAvailableSpace(
-                        estimated_export_size + total_attachment_size,
-                        free_space_at_location
-                    )
-                );
+                return Err(RuntimeError::NotEnoughAvailableSpace(
+                    estimated_export_size + total_attachment_size,
+                    free_space_at_location,
+                ));
             }
         }
 
-        println!("Estimated export size: {}", format_file_size(estimated_export_size));
+        println!(
+            "Estimated export size: {}",
+            format_file_size(estimated_export_size)
+        );
 
         Ok(())
     }
@@ -301,11 +288,13 @@ impl Config {
         println!("Global diagnostic data:");
 
         let total_db_size = get_db_size(&self.options.db_path)?;
-        println!("    Total database size: {}", format_file_size(total_db_size));
-
-        let unique_handles: HashSet<i32> = HashSet::from_iter(
-            self.real_participants.values().cloned()
+        println!(
+            "    Total database size: {}",
+            format_file_size(total_db_size)
         );
+
+        let unique_handles: HashSet<i32> =
+            HashSet::from_iter(self.real_participants.values().cloned());
         let duplicated_handles = self.participants.len() - unique_handles.len();
         if duplicated_handles > 0 {
             println!("    Duplicated contacts: {duplicated_handles}");
@@ -381,7 +370,7 @@ impl Config {
         &'a self,
         handle_id: Option<i32>,
         is_from_me: bool,
-        destination_caller_id: &'b Option<String>
+        destination_caller_id: &'b Option<String>,
     ) -> &'a str {
         if is_from_me {
             if self.options.use_caller_id {
@@ -401,7 +390,7 @@ impl Config {
     pub fn determine_who<'a, 'b: 'a>(
         &'a self,
         handle_id: Option<i32>,
-        is_from_me: bool
+        is_from_me: bool,
     ) -> &'a str {
         if is_from_me {
             return ME;
@@ -417,12 +406,18 @@ impl Config {
 
 #[cfg(test)]
 mod filename_tests {
-    use crate::{ app::attachment_manager::AttachmentManager, Config, Options };
+    use crate::{app::attachment_manager::AttachmentManager, Config, Options};
     use imessage_database::{
-        tables::{ chat::Chat, table::{ get_connection, MAX_LENGTH } },
-        util::{ dirs::default_db_path, platform::Platform, query_context::QueryContext },
+        tables::{
+            chat::Chat,
+            table::{get_connection, MAX_LENGTH},
+        },
+        util::{dirs::default_db_path, platform::Platform, query_context::QueryContext},
     };
-    use std::{ collections::{ BTreeSet, HashMap }, path::PathBuf };
+    use std::{
+        collections::{BTreeSet, HashMap},
+        path::PathBuf,
+    };
 
     fn fake_options() -> Options {
         Options {
@@ -501,35 +496,35 @@ mod filename_tests {
         // Create participant data
         app.participants.insert(
             10,
-            "Person With An Extremely and Excessively Long Name 10".to_string()
+            "Person With An Extremely and Excessively Long Name 10".to_string(),
         );
         app.participants.insert(
             11,
-            "Person With An Extremely and Excessively Long Name 11".to_string()
+            "Person With An Extremely and Excessively Long Name 11".to_string(),
         );
         app.participants.insert(
             12,
-            "Person With An Extremely and Excessively Long Name 12".to_string()
+            "Person With An Extremely and Excessively Long Name 12".to_string(),
         );
         app.participants.insert(
             13,
-            "Person With An Extremely and Excessively Long Name 13".to_string()
+            "Person With An Extremely and Excessively Long Name 13".to_string(),
         );
         app.participants.insert(
             14,
-            "Person With An Extremely and Excessively Long Name 14".to_string()
+            "Person With An Extremely and Excessively Long Name 14".to_string(),
         );
         app.participants.insert(
             15,
-            "Person With An Extremely and Excessively Long Name 15".to_string()
+            "Person With An Extremely and Excessively Long Name 15".to_string(),
         );
         app.participants.insert(
             16,
-            "Person With An Extremely and Excessively Long Name 16".to_string()
+            "Person With An Extremely and Excessively Long Name 16".to_string(),
         );
         app.participants.insert(
             17,
-            "Person With An Extremely and Excessively Long Name 17".to_string()
+            "Person With An Extremely and Excessively Long Name 17".to_string(),
         );
 
         // Add participants
@@ -662,12 +657,12 @@ mod filename_tests {
 
 #[cfg(test)]
 mod who_tests {
-    use crate::{ app::attachment_manager::AttachmentManager, Config, Options };
+    use crate::{app::attachment_manager::AttachmentManager, Config, Options};
     use imessage_database::{
-        tables::{ chat::Chat, messages::Message, table::get_connection },
-        util::{ dirs::default_db_path, platform::Platform, query_context::QueryContext },
+        tables::{chat::Chat, messages::Message, table::get_connection},
+        util::{dirs::default_db_path, platform::Platform, query_context::QueryContext},
     };
-    use std::{ collections::HashMap, path::PathBuf };
+    use std::{collections::HashMap, path::PathBuf};
 
     fn fake_options() -> Options {
         Options {
@@ -917,12 +912,12 @@ mod who_tests {
 
 #[cfg(test)]
 mod directory_tests {
-    use crate::{ app::attachment_manager::AttachmentManager, Config, Options };
+    use crate::{app::attachment_manager::AttachmentManager, Config, Options};
     use imessage_database::{
-        tables::{ attachment::Attachment, table::get_connection },
-        util::{ dirs::default_db_path, platform::Platform, query_context::QueryContext },
+        tables::{attachment::Attachment, table::get_connection},
+        util::{dirs::default_db_path, platform::Platform, query_context::QueryContext},
     };
-    use std::{ collections::HashMap, path::PathBuf };
+    use std::{collections::HashMap, path::PathBuf};
 
     fn fake_options() -> Options {
         Options {

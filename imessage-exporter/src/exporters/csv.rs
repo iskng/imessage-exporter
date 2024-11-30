@@ -1,46 +1,50 @@
-use std::{ borrow::Cow, collections::HashMap, fs::File, io::{ BufWriter, Write }, path::PathBuf };
+use std::{
+    borrow::Cow,
+    collections::HashMap,
+    fs::File,
+    io::{BufWriter, Write},
+    path::PathBuf,
+};
 
 use crate::{
     app::{
-        attachment_manager::AttachmentManager,
-        error::RuntimeError,
-        progress::build_progress_bar_export,
-        runtime::Config,
+        attachment_manager::AttachmentManager, error::RuntimeError,
+        progress::build_progress_bar_export, runtime::Config,
     },
     exporters::exporter::Exporter,
 };
 
 use imessage_database::{
-    error::{ plist::PlistParseError, table::TableError },
+    error::{plist::PlistParseError, table::TableError},
     message_types::variants::Variant,
     tables::{
         attachment::Attachment,
-        messages::{ models::BubbleComponent, Message },
-        table::{ Table, FITNESS_RECEIVER, ME, ORPHANED, YOU },
+        messages::{models::BubbleComponent, Message},
+        table::{Table, FITNESS_RECEIVER, ME, ORPHANED, YOU},
     },
     util::dates::format_utc,
 };
 
+use super::exporter::{BalloonFormatter, Writer};
 use imessage_database::{
     message_types::{
         app::AppMessage,
         app_store::AppStoreMessage,
         collaboration::CollaborationMessage,
-        edited::{ EditStatus, EditedMessage },
-        expressives::{ BubbleEffect, Expressive, ScreenEffect },
+        edited::{EditStatus, EditedMessage},
+        expressives::{BubbleEffect, Expressive, ScreenEffect},
         handwriting::HandwrittenMessage,
         music::MusicMessage,
         placemark::PlacemarkMessage,
         text_effects::TextEffect,
         url::URLMessage,
-        variants::{ Announcement, BalloonProvider, CustomBalloon, URLOverride },
+        variants::{Announcement, BalloonProvider, CustomBalloon, URLOverride},
     },
     util::{
-        dates::{ format, get_local_time, readable_diff, TIMESTAMP_FACTOR, get_utc_time },
+        dates::{format, get_local_time, get_utc_time, readable_diff, TIMESTAMP_FACTOR},
         plist::parse_plist,
     },
 };
-use super::exporter::{ BalloonFormatter, Writer };
 
 pub struct CSV<'a> {
     /// Data that is setup from the application's runtime
@@ -87,19 +91,20 @@ impl<'a> Exporter<'a> for CSV<'a> {
     }
 
     fn iter_messages(&mut self) -> Result<(), RuntimeError> {
-        eprintln!("Exporting to {} as csv...", self.config.options.export_path.display());
+        eprintln!(
+            "Exporting to {} as csv...",
+            self.config.options.export_path.display()
+        );
 
         let mut current_message = 0;
-        let total_messages = Message::get_count(
-            &self.config.db,
-            &self.config.options.query_context
-        ).map_err(RuntimeError::DatabaseError)?;
+        let total_messages =
+            Message::get_count(&self.config.db, &self.config.options.query_context)
+                .map_err(RuntimeError::DatabaseError)?;
         let pb = build_progress_bar_export(total_messages);
 
-        let mut statement = Message::stream_rows(
-            &self.config.db,
-            &self.config.options.query_context
-        ).map_err(RuntimeError::DatabaseError)?;
+        let mut statement =
+            Message::stream_rows(&self.config.db, &self.config.options.query_context)
+                .map_err(RuntimeError::DatabaseError)?;
 
         let messages = statement
             .query_map([], |row| Ok(Message::from_row(row)))
@@ -121,7 +126,7 @@ impl<'a> Exporter<'a> for CSV<'a> {
 
     fn get_or_create_file(
         &mut self,
-        message: &Message
+        message: &Message,
     ) -> Result<&mut BufWriter<File>, RuntimeError> {
         match self.config.conversation(message) {
             Some((chatroom, _)) => {
@@ -154,9 +159,8 @@ impl<'a> CSV<'a> {
         // Format dates in UTC
         let date = format_utc(&get_utc_time(&message.date, &self.config.offset));
         let date_read = format_utc(&get_utc_time(&message.date_read, &self.config.offset));
-        let date_delivered = format_utc(
-            &get_utc_time(&message.date_delivered, &self.config.offset)
-        );
+        let date_delivered =
+            format_utc(&get_utc_time(&message.date_delivered, &self.config.offset));
         let date_edited = format_utc(&get_utc_time(&message.date_edited, &self.config.offset));
 
         // Get all the data we need first
@@ -273,9 +277,9 @@ impl<'a> Writer<'a> for CSV<'a> {
             self.config.who(
                 message.handle_id,
                 message.is_from_me(),
-                &message.destination_caller_id
+                &message.destination_caller_id,
             ),
-            &indent
+            &indent,
         );
 
         // If message was deleted, annotate it
@@ -283,7 +287,7 @@ impl<'a> Writer<'a> for CSV<'a> {
             self.add_line(
                 &mut formatted_message,
                 "This message was deleted from the conversation!",
-                &indent
+                &indent,
             );
         }
 
@@ -307,7 +311,11 @@ impl<'a> Writer<'a> for CSV<'a> {
 
         // Handle Shared Location
         if message.started_sharing_location() || message.stopped_sharing_location() {
-            self.add_line(&mut formatted_message, self.format_shared_location(message), &indent);
+            self.add_line(
+                &mut formatted_message,
+                self.format_shared_location(message),
+                &indent,
+            );
         }
 
         // Generate the message body from it's components
@@ -319,13 +327,8 @@ impl<'a> Writer<'a> for CSV<'a> {
                         // Render edited message content, if applicable
                         if message.is_part_edited(idx) {
                             if let Some(edited_parts) = &message.edited_parts {
-                                if
-                                    let Some(edited) = self.format_edited(
-                                        message,
-                                        edited_parts,
-                                        idx,
-                                        &indent
-                                    )
+                                if let Some(edited) =
+                                    self.format_edited(message, edited_parts, idx, &indent)
                                 {
                                     self.add_line(&mut formatted_message, &edited, &indent);
                                 };
@@ -334,13 +337,11 @@ impl<'a> Writer<'a> for CSV<'a> {
                             let mut formatted_text = String::with_capacity(text.len());
 
                             for text_attr in text_attrs {
-                                if
-                                    let Some(message_content) = text.get(
-                                        text_attr.start..text_attr.end
-                                    )
+                                if let Some(message_content) =
+                                    text.get(text_attr.start..text_attr.end)
                                 {
                                     formatted_text.push_str(
-                                        &self.format_attributed(message_content, &text_attr.effect)
+                                        &self.format_attributed(message_content, &text_attr.effect),
                                     );
                                 }
                             }
@@ -354,7 +355,7 @@ impl<'a> Writer<'a> for CSV<'a> {
                                 self.add_line(
                                     &mut formatted_message,
                                     &formatted_text.replace(FITNESS_RECEIVER, YOU),
-                                    &indent
+                                    &indent,
                                 );
                             } else {
                                 self.add_line(&mut formatted_message, &formatted_text, &indent);
@@ -362,48 +363,39 @@ impl<'a> Writer<'a> for CSV<'a> {
                         }
                     }
                 }
-                BubbleComponent::Attachment(_) =>
-                    match attachments.get_mut(attachment_index) {
-                        Some(attachment) => {
-                            if attachment.is_sticker {
-                                let result = self.format_sticker(attachment, message);
-                                self.add_line(&mut formatted_message, &result, &indent);
-                            } else {
-                                match self.format_attachment(attachment, message) {
-                                    Ok(result) => {
-                                        attachment_index += 1;
-                                        self.add_line(&mut formatted_message, &result, &indent);
-                                    }
-                                    Err(result) => {
-                                        self.add_line(&mut formatted_message, result, &indent);
-                                    }
+                BubbleComponent::Attachment(_) => match attachments.get_mut(attachment_index) {
+                    Some(attachment) => {
+                        if attachment.is_sticker {
+                            let result = self.format_sticker(attachment, message);
+                            self.add_line(&mut formatted_message, &result, &indent);
+                        } else {
+                            match self.format_attachment(attachment, message) {
+                                Ok(result) => {
+                                    attachment_index += 1;
+                                    self.add_line(&mut formatted_message, &result, &indent);
+                                }
+                                Err(result) => {
+                                    self.add_line(&mut formatted_message, result, &indent);
                                 }
                             }
                         }
-                        // Attachment does not exist in attachments table
-                        None =>
-                            self.add_line(&mut formatted_message, "Attachment missing!", &indent),
                     }
-                BubbleComponent::App =>
-                    match self.format_app(message, &mut attachments, &indent) {
-                        // We use an empty indent here because `format_app` handles building the entire message
-                        Ok(ok_bubble) => self.add_line(&mut formatted_message, &ok_bubble, &indent),
-                        Err(why) =>
-                            self.add_line(
-                                &mut formatted_message,
-                                &format!("Unable to format app message: {why}"),
-                                &indent
-                            ),
-                    }
+                    // Attachment does not exist in attachments table
+                    None => self.add_line(&mut formatted_message, "Attachment missing!", &indent),
+                },
+                BubbleComponent::App => match self.format_app(message, &mut attachments, &indent) {
+                    // We use an empty indent here because `format_app` handles building the entire message
+                    Ok(ok_bubble) => self.add_line(&mut formatted_message, &ok_bubble, &indent),
+                    Err(why) => self.add_line(
+                        &mut formatted_message,
+                        &format!("Unable to format app message: {why}"),
+                        &indent,
+                    ),
+                },
                 BubbleComponent::Retracted => {
                     if let Some(edited_parts) = &message.edited_parts {
-                        if
-                            let Some(edited) = self.format_edited(
-                                message,
-                                edited_parts,
-                                idx,
-                                &indent
-                            )
+                        if let Some(edited) =
+                            self.format_edited(message, edited_parts, idx, &indent)
                         {
                             self.add_line(&mut formatted_message, &edited, &indent);
                         };
@@ -413,26 +405,30 @@ impl<'a> Writer<'a> for CSV<'a> {
 
             // Handle expressives
             if message.expressive_send_style_id.is_some() {
-                self.add_line(&mut formatted_message, self.format_expressive(message), &indent);
+                self.add_line(
+                    &mut formatted_message,
+                    self.format_expressive(message),
+                    &indent,
+                );
             }
 
             // Handle Tapbacks
             if let Some(tapbacks_map) = self.config.tapbacks.get(&message.guid) {
                 if let Some(tapbacks) = tapbacks_map.get(&idx) {
                     let mut formatted_tapbacks = String::new();
-                    tapbacks.iter().try_for_each(
-                        |tapbacks| -> Result<(), TableError> {
+                    tapbacks
+                        .iter()
+                        .try_for_each(|tapbacks| -> Result<(), TableError> {
                             let formatted = self.format_tapback(tapbacks)?;
                             if !formatted.is_empty() {
                                 self.add_line(
                                     &mut formatted_tapbacks,
                                     &self.format_tapback(tapbacks)?,
-                                    &indent
+                                    &indent,
                                 );
                             }
                             Ok(())
-                        }
-                    )?;
+                        })?;
 
                     if !formatted_tapbacks.is_empty() {
                         self.add_line(&mut formatted_message, "Tapbacks:", &indent);
@@ -443,19 +439,19 @@ impl<'a> Writer<'a> for CSV<'a> {
 
             // Handle Replies
             if let Some(replies) = replies.get_mut(&idx) {
-                replies.iter_mut().try_for_each(
-                    |reply| -> Result<(), TableError> {
+                replies
+                    .iter_mut()
+                    .try_for_each(|reply| -> Result<(), TableError> {
                         let _ = reply.generate_text(&self.config.db);
                         if !reply.is_tapback() {
                             self.add_line(
                                 &mut formatted_message,
                                 &self.format_message(reply, 4)?,
-                                &indent
+                                &indent,
                             );
                         }
                         Ok(())
-                    }
-                )?;
+                    })?;
             }
         }
 
@@ -464,7 +460,7 @@ impl<'a> Writer<'a> for CSV<'a> {
             self.add_line(
                 &mut formatted_message,
                 "This message responded to an earlier message.",
-                &indent
+                &indent,
             );
         }
 
@@ -479,29 +475,34 @@ impl<'a> Writer<'a> for CSV<'a> {
     fn format_attachment(
         &self,
         attachment: &'a mut Attachment,
-        message: &Message
+        message: &Message,
     ) -> Result<String, &'a str> {
         // Copy the file, if requested
-        self.config.options.attachment_manager
+        self.config
+            .options
+            .attachment_manager
             .handle_attachment(message, attachment, self.config)
             .ok_or(attachment.filename())?;
 
         // Build a relative filepath from the fully qualified one on the `Attachment`
-        Ok(attachment.filename.clone().unwrap_or(self.config.message_attachment_path(attachment)))
+        Ok(attachment
+            .filename
+            .clone()
+            .unwrap_or(self.config.message_attachment_path(attachment)))
     }
 
     fn format_sticker(&self, sticker: &'a mut Attachment, message: &Message) -> String {
         let who = self.config.who(
             message.handle_id,
             message.is_from_me(),
-            &message.destination_caller_id
+            &message.destination_caller_id,
         );
         match self.format_attachment(sticker, message) {
             Ok(path_to_sticker) => {
                 let sticker_effect = sticker.get_sticker_effect(
                     &self.config.options.platform,
                     &self.config.options.db_path,
-                    self.config.options.attachment_root.as_deref()
+                    self.config.options.attachment_root.as_deref(),
                 );
                 if let Ok(Some(sticker_effect)) = sticker_effect {
                     return format!("{sticker_effect} Sticker from {who}: {path_to_sticker}");
@@ -516,7 +517,7 @@ impl<'a> Writer<'a> for CSV<'a> {
         &self,
         message: &'a Message,
         attachments: &mut Vec<Attachment>,
-        indent: &str
+        indent: &str,
     ) -> Result<String, PlistParseError> {
         if let Variant::App(balloon) = message.variant() {
             let mut app_bubble = String::new();
@@ -552,19 +553,18 @@ impl<'a> Writer<'a> for CSV<'a> {
                     // Handle the app case
                     let parsed = parse_plist(&payload)?;
                     match AppMessage::from_map(&parsed) {
-                        Ok(bubble) =>
-                            match balloon {
-                                CustomBalloon::Application(bundle_id) => {
-                                    self.format_generic_app(&bubble, bundle_id, attachments, indent)
-                                }
-                                CustomBalloon::ApplePay => self.format_apple_pay(&bubble, indent),
-                                CustomBalloon::Fitness => self.format_fitness(&bubble, indent),
-                                CustomBalloon::Slideshow => self.format_slideshow(&bubble, indent),
-                                CustomBalloon::CheckIn => self.format_check_in(&bubble, indent),
-                                CustomBalloon::FindMy => self.format_find_my(&bubble, indent),
-                                CustomBalloon::Handwriting => unreachable!(),
-                                CustomBalloon::URL => unreachable!(),
+                        Ok(bubble) => match balloon {
+                            CustomBalloon::Application(bundle_id) => {
+                                self.format_generic_app(&bubble, bundle_id, attachments, indent)
                             }
+                            CustomBalloon::ApplePay => self.format_apple_pay(&bubble, indent),
+                            CustomBalloon::Fitness => self.format_fitness(&bubble, indent),
+                            CustomBalloon::Slideshow => self.format_slideshow(&bubble, indent),
+                            CustomBalloon::CheckIn => self.format_check_in(&bubble, indent),
+                            CustomBalloon::FindMy => self.format_find_my(&bubble, indent),
+                            CustomBalloon::Handwriting => unreachable!(),
+                            CustomBalloon::URL => unreachable!(),
+                        },
                         Err(why) => {
                             return Err(why);
                         }
@@ -592,29 +592,24 @@ impl<'a> Writer<'a> for CSV<'a> {
                 if !added {
                     return Ok(String::new());
                 }
-                Ok(
-                    format!(
-                        "{} by {}",
-                        tapback,
-                        self.config.who(msg.handle_id, msg.is_from_me(), &msg.destination_caller_id)
-                    )
-                )
+                Ok(format!(
+                    "{} by {}",
+                    tapback,
+                    self.config
+                        .who(msg.handle_id, msg.is_from_me(), &msg.destination_caller_id)
+                ))
             }
             Variant::Sticker(_) => {
                 let mut paths = Attachment::from_message(&self.config.db, msg)?;
-                let who = self.config.who(
-                    msg.handle_id,
-                    msg.is_from_me(),
-                    &msg.destination_caller_id
-                );
+                let who =
+                    self.config
+                        .who(msg.handle_id, msg.is_from_me(), &msg.destination_caller_id);
                 // Sticker messages have only one attachment, the sticker image
-                Ok(
-                    if let Some(sticker) = paths.get_mut(0) {
-                        format!("{} from {who}", self.format_sticker(sticker, msg))
-                    } else {
-                        format!("Sticker from {who} not found!")
-                    }
-                )
+                Ok(if let Some(sticker) = paths.get_mut(0) {
+                    format!("{} from {who}", self.format_sticker(sticker, msg))
+                } else {
+                    format!("Sticker from {who} not found!")
+                })
             }
             _ => unreachable!(),
         }
@@ -622,32 +617,32 @@ impl<'a> Writer<'a> for CSV<'a> {
 
     fn format_expressive(&self, msg: &'a Message) -> &'a str {
         match msg.get_expressive() {
-            Expressive::Screen(effect) =>
-                match effect {
-                    ScreenEffect::Confetti => "Sent with Confetti",
-                    ScreenEffect::Echo => "Sent with Echo",
-                    ScreenEffect::Fireworks => "Sent with Fireworks",
-                    ScreenEffect::Balloons => "Sent with Balloons",
-                    ScreenEffect::Heart => "Sent with Heart",
-                    ScreenEffect::Lasers => "Sent with Lasers",
-                    ScreenEffect::ShootingStar => "Sent with Shooting Star",
-                    ScreenEffect::Sparkles => "Sent with Sparkles",
-                    ScreenEffect::Spotlight => "Sent with Spotlight",
-                }
-            Expressive::Bubble(effect) =>
-                match effect {
-                    BubbleEffect::Slam => "Sent with Slam",
-                    BubbleEffect::Loud => "Sent with Loud",
-                    BubbleEffect::Gentle => "Sent with Gentle",
-                    BubbleEffect::InvisibleInk => "Sent with Invisible Ink",
-                }
+            Expressive::Screen(effect) => match effect {
+                ScreenEffect::Confetti => "Sent with Confetti",
+                ScreenEffect::Echo => "Sent with Echo",
+                ScreenEffect::Fireworks => "Sent with Fireworks",
+                ScreenEffect::Balloons => "Sent with Balloons",
+                ScreenEffect::Heart => "Sent with Heart",
+                ScreenEffect::Lasers => "Sent with Lasers",
+                ScreenEffect::ShootingStar => "Sent with Shooting Star",
+                ScreenEffect::Sparkles => "Sent with Sparkles",
+                ScreenEffect::Spotlight => "Sent with Spotlight",
+            },
+            Expressive::Bubble(effect) => match effect {
+                BubbleEffect::Slam => "Sent with Slam",
+                BubbleEffect::Loud => "Sent with Loud",
+                BubbleEffect::Gentle => "Sent with Gentle",
+                BubbleEffect::InvisibleInk => "Sent with Invisible Ink",
+            },
             Expressive::Unknown(effect) => effect,
             Expressive::None => "",
         }
     }
 
     fn format_announcement(&self, msg: &'a Message) -> String {
-        let mut who = self.config.who(msg.handle_id, msg.is_from_me(), &msg.destination_caller_id);
+        let mut who = self
+            .config
+            .who(msg.handle_id, msg.is_from_me(), &msg.destination_caller_id);
         // Rename yourself so we render the proper grammar here
         if who == ME {
             who = self.config.options.custom_name.as_deref().unwrap_or(YOU);
@@ -656,19 +651,18 @@ impl<'a> Writer<'a> for CSV<'a> {
         let timestamp = format(&msg.date(&self.config.offset));
 
         return match msg.get_announcement() {
-            Some(announcement) =>
-                match announcement {
-                    Announcement::NameChange(name) => {
-                        format!("{timestamp} {who} renamed the conversation to {name}\n\n")
-                    }
-                    Announcement::PhotoChange => {
-                        format!("{timestamp} {who} changed the group photo.\n\n")
-                    }
-                    Announcement::Unknown(num) => {
-                        format!("{timestamp} {who} performed unknown action {num}.\n\n")
-                    }
-                    Announcement::FullyUnsent => format!("{timestamp} {who} unsent a message!\n\n"),
+            Some(announcement) => match announcement {
+                Announcement::NameChange(name) => {
+                    format!("{timestamp} {who} renamed the conversation to {name}\n\n")
                 }
+                Announcement::PhotoChange => {
+                    format!("{timestamp} {who} changed the group photo.\n\n")
+                }
+                Announcement::Unknown(num) => {
+                    format!("{timestamp} {who} performed unknown action {num}.\n\n")
+                }
+                Announcement::FullyUnsent => format!("{timestamp} {who} unsent a message!\n\n"),
+            },
             None => String::from("Unable to format announcement!\n\n"),
         };
     }
@@ -692,7 +686,7 @@ impl<'a> Writer<'a> for CSV<'a> {
         msg: &'a Message,
         edited_message: &'a EditedMessage,
         message_part_idx: usize,
-        indent: &str
+        indent: &str,
     ) -> Option<String> {
         if let Some(edited_message_part) = edited_message.part(message_part_idx) {
             let mut out_s = String::new();
@@ -704,9 +698,8 @@ impl<'a> Writer<'a> for CSV<'a> {
                         match previous_timestamp {
                             // Original message get an absolute timestamp
                             None => {
-                                let parsed_timestamp = format(
-                                    &get_local_time(&event.date, &self.config.offset)
-                                );
+                                let parsed_timestamp =
+                                    format(&get_local_time(&event.date, &self.config.offset));
                                 out_s.push_str(&parsed_timestamp);
                                 out_s.push(' ');
                             }
@@ -737,12 +730,10 @@ impl<'a> Writer<'a> for CSV<'a> {
                         "They"
                     };
 
-                    match
-                        readable_diff(
-                            msg.date(&self.config.offset),
-                            msg.date_edited(&self.config.offset)
-                        )
-                    {
+                    match readable_diff(
+                        msg.date(&self.config.offset),
+                        msg.date_edited(&self.config.offset),
+                    ) {
                         Some(diff) => {
                             out_s.push_str(who);
                             out_s.push_str(" unsent this message part ");
@@ -771,7 +762,8 @@ impl<'a> Writer<'a> for CSV<'a> {
     }
 
     fn write_to_file(file: &mut BufWriter<File>, text: &str) -> Result<(), RuntimeError> {
-        file.write_all(text.as_bytes()).map_err(RuntimeError::DiskError)
+        file.write_all(text.as_bytes())
+            .map_err(RuntimeError::DiskError)
     }
 }
 
@@ -930,23 +922,28 @@ impl<'a> BalloonFormatter<&'a str> for CSV<'a> {
         &self,
         msg: &Message,
         balloon: &HandwrittenMessage,
-        indent: &str
+        indent: &str,
     ) -> String {
         match self.config.options.attachment_manager {
-            AttachmentManager::Disabled =>
-                balloon.render_ascii(40).replace("\n", &format!("{indent}\n")),
-            AttachmentManager::Compatible | AttachmentManager::Efficient =>
-                self.config.options.attachment_manager
-                    .handle_handwriting(msg, balloon, self.config)
-                    .map(|filepath| {
-                        self.config
-                            .relative_path(PathBuf::from(&filepath))
-                            .unwrap_or(filepath.display().to_string())
-                    })
-                    .map(|filepath| format!("{indent}{filepath}"))
-                    .unwrap_or_else(|| {
-                        balloon.render_ascii(40).replace("\n", &format!("{indent}\n"))
-                    }),
+            AttachmentManager::Disabled => balloon
+                .render_ascii(40)
+                .replace("\n", &format!("{indent}\n")),
+            AttachmentManager::Compatible | AttachmentManager::Efficient => self
+                .config
+                .options
+                .attachment_manager
+                .handle_handwriting(msg, balloon, self.config)
+                .map(|filepath| {
+                    self.config
+                        .relative_path(PathBuf::from(&filepath))
+                        .unwrap_or(filepath.display().to_string())
+                })
+                .map(|filepath| format!("{indent}{filepath}"))
+                .unwrap_or_else(|| {
+                    balloon
+                        .render_ascii(40)
+                        .replace("\n", &format!("{indent}\n"))
+                }),
         }
     }
 
@@ -1027,9 +1024,8 @@ impl<'a> BalloonFormatter<&'a str> for CSV<'a> {
             out_s.push_str("\nExpected at ");
             out_s.push_str(&date_string);
         } else if
-            // Expired check-in
-            let Some(date_str) = metadata.get("triggerTime")
-        {
+        // Expired check-in
+        let Some(date_str) = metadata.get("triggerTime") {
             // Parse the estimated end time from the message's query string
             let date_stamp = (date_str.parse::<f64>().unwrap_or(0.0) as i64) * TIMESTAMP_FACTOR;
             let date_time = get_local_time(&date_stamp, &0);
@@ -1038,9 +1034,8 @@ impl<'a> BalloonFormatter<&'a str> for CSV<'a> {
             out_s.push_str("\nWas expected at ");
             out_s.push_str(&date_string);
         } else if
-            // Accepted check-in
-            let Some(date_str) = metadata.get("sendDate")
-        {
+        // Accepted check-in
+        let Some(date_str) = metadata.get("sendDate") {
             // Parse the estimated end time from the message's query string
             let date_stamp = (date_str.parse::<f64>().unwrap_or(0.0) as i64) * TIMESTAMP_FACTOR;
             let date_time = get_local_time(&date_stamp, &0);
@@ -1058,7 +1053,7 @@ impl<'a> BalloonFormatter<&'a str> for CSV<'a> {
         balloon: &AppMessage,
         bundle_id: &str,
         _: &mut Vec<Attachment>,
-        indent: &str
+        indent: &str,
     ) -> String {
         let mut out_s = String::from(indent);
 

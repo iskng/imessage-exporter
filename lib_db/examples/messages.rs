@@ -1,8 +1,8 @@
-use serde::{ Deserialize, Serialize };
-use surrealdb::opt::auth::Root;
-use surrealdb::Surreal;
+use serde::{Deserialize, Serialize};
 use surrealdb::engine::remote::ws::Ws;
+use surrealdb::opt::auth::Root;
 use surrealdb::sql::Value;
+use surrealdb::Surreal;
 use tokio;
 
 #[derive(Serialize, Deserialize)]
@@ -22,7 +22,8 @@ async fn main() -> surrealdb::Result<()> {
     db.signin(Root {
         username: "root",
         password: "roots",
-    }).await?;
+    })
+    .await?;
 
     // Select a specific namespace / database
     db.use_ns("lynx").use_db("lynx").await?;
@@ -37,13 +38,16 @@ async fn main() -> surrealdb::Result<()> {
             id: None,
             content: "Another message".to_string(),
             timestamp: 1636414860,
-        }
-        // Add more messages as needed
+        }, // Add more messages as needed
     ];
 
     // Insert each message
     for message in messages {
-        let _response: Value = db.create("messages").content(message).await?.expect("REASON"); // Pass the `Message` struct directly
+        let _response: Value = db
+            .create("messages")
+            .content(message)
+            .await?
+            .expect("REASON"); // Pass the `Message` struct directly
     }
 
     println!("Messages inserted successfully");

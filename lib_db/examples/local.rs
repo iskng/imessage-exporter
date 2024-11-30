@@ -1,8 +1,8 @@
+use dirs;
+use serde::{Deserialize, Serialize};
+use std::sync::LazyLock;
 use surrealdb::engine::any::Any;
 use surrealdb::Surreal;
-use serde::{ Serialize, Deserialize };
-use std::sync::LazyLock;
-use dirs;
 
 // Static database connection
 static DB: LazyLock<Surreal<Any>> = LazyLock::new(Surreal::init);
@@ -17,8 +17,7 @@ struct Person {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get the default cache directory path
-    let default_path = dirs
-        ::cache_dir()
+    let default_path = dirs::cache_dir()
         .map(|cache_dir| cache_dir.join("lynx").join("pathoth"))
         .unwrap_or_else(|| std::path::PathBuf::from("/export/db"));
 
@@ -47,8 +46,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         
         -- Create an index on name
         DEFINE INDEX idx_people_name ON people FIELDS name UNIQUE;
-        "
-    ).await?;
+        ",
+    )
+    .await?;
 
     println!("Table schema defined.");
 
@@ -68,7 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             name: "Charlie".into(),
             age: 42,
             city: "Chicago".into(),
-        }
+        },
     ];
 
     println!("\nInserting test data...");
@@ -92,7 +92,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nQuerying people over 30...");
 
     // Query with a filter
-    let older_people: Vec<Person> = DB.query("SELECT * FROM people WHERE age > 30").await?.take(0)?;
+    let older_people: Vec<Person> = DB
+        .query("SELECT * FROM people WHERE age > 30")
+        .await?
+        .take(0)?;
 
     // Print filtered results
     for person in &older_people {

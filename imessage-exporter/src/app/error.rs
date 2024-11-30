@@ -2,9 +2,13 @@
 Errors that can happen during the application's runtime
 */
 
-use std::{ fmt::{ Display, Formatter, Result }, io::Error as IoError, path::PathBuf };
+use std::{
+    fmt::{Display, Formatter, Result},
+    io::Error as IoError,
+    path::PathBuf,
+};
 
-use imessage_database::{ error::table::TableError, util::size::format_file_size };
+use imessage_database::{error::table::TableError, util::size::format_file_size};
 
 use crate::app::options::OPTION_BYPASS_FREE_SPACE_CHECK;
 

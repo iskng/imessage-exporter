@@ -1,8 +1,8 @@
 mod databases;
 mod types;
 
+use chrono::{DateTime, TimeZone, Utc};
 use std::sync::Arc;
-use chrono::{ DateTime, TimeZone, Utc };
 
 use databases::surreal::SurrealDatabase;
 use tokio::runtime::Runtime;
@@ -25,12 +25,14 @@ pub enum DatabaseType {
 }
 
 // Public database interface
+
 pub trait Database: Send + Sync {
     fn insert_batch(
         &self,
-        messages: Vec<Message>
+        messages: Vec<Message>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
     fn flush(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
+    fn relate_graph(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }
 
 // Add this struct to hold shared resources
@@ -41,7 +43,7 @@ pub struct DatabaseConnection {
 
 impl dyn Database {
     pub fn new(
-        db_type: DatabaseType
+        db_type: DatabaseType,
     ) -> Result<Box<dyn Database + Send + Sync>, Box<dyn std::error::Error + Send + Sync>> {
         // Create the runtime once at the top level
         let runtime = Arc::new(Runtime::new()?);
@@ -65,17 +67,20 @@ impl dyn Database {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
-    use std::thread;
+    use chrono::{DateTime, TimeZone, Utc};
     use std::sync::Arc;
-    use chrono::{ DateTime, TimeZone, Utc };
+    use std::thread;
+    use std::time::Duration;
 
     // Define static strings for test data
     const TEST_DATE: &'static str = "2024-01-01T00:00:00Z";
 
     // Helper function to parse test date
     fn get_test_datetime() -> Option<DateTime<Utc>> {
-        Some(Utc.datetime_from_str(TEST_DATE, "%Y-%m-%dT%H:%M:%SZ").unwrap())
+        Some(
+            Utc.datetime_from_str(TEST_DATE, "%Y-%m-%dT%H:%M:%SZ")
+                .unwrap(),
+        )
     }
 
     // Define the test message once
@@ -136,7 +141,8 @@ mod tests {
 
         // Create and insert messages
         let messages = (0..10).map(get_test_message).collect::<Vec<_>>();
-        db.insert_batch(messages).expect("Failed to insert messages");
+        db.insert_batch(messages)
+            .expect("Failed to insert messages");
 
         thread::sleep(Duration::from_millis(100));
         // Commit any pending transactions
@@ -150,13 +156,14 @@ mod tests {
 
         // Create and insert messages
         let messages = (0..1000).map(get_test_message).collect::<Vec<_>>();
-        db.insert_batch(messages).expect("Failed to insert large batch");
+        db.insert_batch(messages)
+            .expect("Failed to insert large batch");
     }
 
     #[test]
     fn test_concurrent_operations() {
         let db = Arc::new(
-            <dyn Database>::new(DatabaseType::Surreal).expect("Failed to create database")
+            <dyn Database>::new(DatabaseType::Surreal).expect("Failed to create database"),
         );
 
         let mut handles = vec![];
@@ -164,7 +171,8 @@ mod tests {
             let db = Arc::clone(&db);
             let handle = thread::spawn(move || {
                 let messages = vec![get_test_message(i)];
-                db.insert_batch(messages).expect("Failed to insert from thread");
+                db.insert_batch(messages)
+                    .expect("Failed to insert from thread");
             });
             handles.push(handle);
         }

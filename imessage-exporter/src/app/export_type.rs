@@ -47,9 +47,18 @@ mod tests {
 
     #[test]
     fn can_parse_html_any_case() {
-        assert!(matches!(ExportType::from_cli("html"), Some(ExportType::Html)));
-        assert!(matches!(ExportType::from_cli("HTML"), Some(ExportType::Html)));
-        assert!(matches!(ExportType::from_cli("HtMl"), Some(ExportType::Html)));
+        assert!(matches!(
+            ExportType::from_cli("html"),
+            Some(ExportType::Html)
+        ));
+        assert!(matches!(
+            ExportType::from_cli("HTML"),
+            Some(ExportType::Html)
+        ));
+        assert!(matches!(
+            ExportType::from_cli("HtMl"),
+            Some(ExportType::Html)
+        ));
     }
 
     #[test]
