@@ -4,15 +4,19 @@
 
 use std::path::PathBuf;
 
-use clap::{ crate_version, Arg, ArgAction, ArgMatches, Command };
+use clap::{crate_version, Arg, ArgAction, ArgMatches, Command};
 
 use imessage_database::{
-    tables::{ attachment::DEFAULT_ATTACHMENT_ROOT, table::DEFAULT_PATH_IOS },
-    util::{ dirs::{ default_db_path, home }, platform::Platform, query_context::QueryContext },
+    tables::{attachment::DEFAULT_ATTACHMENT_ROOT, table::DEFAULT_PATH_IOS},
+    util::{
+        dirs::{default_db_path, home},
+        platform::Platform,
+        query_context::QueryContext,
+    },
 };
 
 use crate::app::{
-    compatibility::attachment_manager::{ AttachmentManager, AttachmentManagerMode },
+    compatibility::attachment_manager::{AttachmentManager, AttachmentManagerMode},
     error::RuntimeError,
     export_type::ExportType,
 };
@@ -120,49 +124,29 @@ impl Options {
             );
         }
         if user_export_path.is_some() && export_file_type.is_none() {
-            return Err(
-                RuntimeError::InvalidOptions(
-                    format!(
-                        "Option {OPTION_EXPORT_PATH} is enabled, which requires `--{OPTION_EXPORT_TYPE}`"
-                    )
-                )
-            );
+            return Err(RuntimeError::InvalidOptions(format!(
+                "Option {OPTION_EXPORT_PATH} is enabled, which requires `--{OPTION_EXPORT_TYPE}`"
+            )));
         }
         if start_date.is_some() && export_file_type.is_none() {
-            return Err(
-                RuntimeError::InvalidOptions(
-                    format!(
-                        "Option {OPTION_START_DATE} is enabled, which requires `--{OPTION_EXPORT_TYPE}`"
-                    )
-                )
-            );
+            return Err(RuntimeError::InvalidOptions(format!(
+                "Option {OPTION_START_DATE} is enabled, which requires `--{OPTION_EXPORT_TYPE}`"
+            )));
         }
         if end_date.is_some() && export_file_type.is_none() {
-            return Err(
-                RuntimeError::InvalidOptions(
-                    format!(
-                        "Option {OPTION_END_DATE} is enabled, which requires `--{OPTION_EXPORT_TYPE}`"
-                    )
-                )
-            );
+            return Err(RuntimeError::InvalidOptions(format!(
+                "Option {OPTION_END_DATE} is enabled, which requires `--{OPTION_EXPORT_TYPE}`"
+            )));
         }
         if custom_name.is_some() && export_file_type.is_none() {
-            return Err(
-                RuntimeError::InvalidOptions(
-                    format!(
-                        "Option {OPTION_CUSTOM_NAME} is enabled, which requires `--{OPTION_EXPORT_TYPE}`"
-                    )
-                )
-            );
+            return Err(RuntimeError::InvalidOptions(format!(
+                "Option {OPTION_CUSTOM_NAME} is enabled, which requires `--{OPTION_EXPORT_TYPE}`"
+            )));
         }
         if use_caller_id && export_file_type.is_none() {
-            return Err(
-                RuntimeError::InvalidOptions(
-                    format!(
-                        "Option {OPTION_USE_CALLER_ID} is enabled, which requires `--{OPTION_EXPORT_TYPE}`"
-                    )
-                )
-            );
+            return Err(RuntimeError::InvalidOptions(format!(
+                "Option {OPTION_USE_CALLER_ID} is enabled, which requires `--{OPTION_EXPORT_TYPE}`"
+            )));
         }
         if conversation_filter.is_some() && export_file_type.is_none() {
             return Err(
@@ -183,71 +167,51 @@ impl Options {
 
         // Ensure that if diagnostics are enabled, no other options are
         if diagnostic && attachment_manager_type.is_some() {
-            return Err(
-                RuntimeError::InvalidOptions(
-                    format!("Diagnostics are enabled; {OPTION_ATTACHMENT_MANAGER} is disallowed")
-                )
-            );
+            return Err(RuntimeError::InvalidOptions(format!(
+                "Diagnostics are enabled; {OPTION_ATTACHMENT_MANAGER} is disallowed"
+            )));
         }
         if diagnostic && user_export_path.is_some() {
-            return Err(
-                RuntimeError::InvalidOptions(
-                    format!("Diagnostics are enabled; {OPTION_EXPORT_PATH} is disallowed")
-                )
-            );
+            return Err(RuntimeError::InvalidOptions(format!(
+                "Diagnostics are enabled; {OPTION_EXPORT_PATH} is disallowed"
+            )));
         }
         if diagnostic && export_file_type.is_some() {
-            return Err(
-                RuntimeError::InvalidOptions(
-                    format!("Diagnostics are enabled; {OPTION_EXPORT_TYPE} is disallowed")
-                )
-            );
+            return Err(RuntimeError::InvalidOptions(format!(
+                "Diagnostics are enabled; {OPTION_EXPORT_TYPE} is disallowed"
+            )));
         }
         if diagnostic && start_date.is_some() {
-            return Err(
-                RuntimeError::InvalidOptions(
-                    format!("Diagnostics are enabled; {OPTION_START_DATE} is disallowed")
-                )
-            );
+            return Err(RuntimeError::InvalidOptions(format!(
+                "Diagnostics are enabled; {OPTION_START_DATE} is disallowed"
+            )));
         }
         if diagnostic && end_date.is_some() {
-            return Err(
-                RuntimeError::InvalidOptions(
-                    format!("Diagnostics are enabled; {OPTION_END_DATE} is disallowed")
-                )
-            );
+            return Err(RuntimeError::InvalidOptions(format!(
+                "Diagnostics are enabled; {OPTION_END_DATE} is disallowed"
+            )));
         }
         if diagnostic && use_caller_id {
-            return Err(
-                RuntimeError::InvalidOptions(
-                    format!("Diagnostics are enabled; {OPTION_USE_CALLER_ID} is disallowed")
-                )
-            );
+            return Err(RuntimeError::InvalidOptions(format!(
+                "Diagnostics are enabled; {OPTION_USE_CALLER_ID} is disallowed"
+            )));
         }
         if diagnostic && custom_name.is_some() {
-            return Err(
-                RuntimeError::InvalidOptions(
-                    format!("Diagnostics are enabled; {OPTION_CUSTOM_NAME} is disallowed")
-                )
-            );
+            return Err(RuntimeError::InvalidOptions(format!(
+                "Diagnostics are enabled; {OPTION_CUSTOM_NAME} is disallowed"
+            )));
         }
         if diagnostic && conversation_filter.is_some() {
-            return Err(
-                RuntimeError::InvalidOptions(
-                    format!("Diagnostics are enabled; {OPTION_CONVERSATION_FILTER} is disallowed")
-                )
-            );
+            return Err(RuntimeError::InvalidOptions(format!(
+                "Diagnostics are enabled; {OPTION_CONVERSATION_FILTER} is disallowed"
+            )));
         }
 
         // Ensure that there are no custom name conflicts
         if custom_name.is_some() && use_caller_id {
-            return Err(
-                RuntimeError::InvalidOptions(
-                    format!(
-                        "`--{OPTION_CUSTOM_NAME}` is enabled; `--{OPTION_USE_CALLER_ID}` is disallowed"
-                    )
-                )
-            );
+            return Err(RuntimeError::InvalidOptions(format!(
+                "`--{OPTION_CUSTOM_NAME}` is enabled; `--{OPTION_USE_CALLER_ID}` is disallowed"
+            )));
         }
 
         // Build query context
@@ -271,14 +235,11 @@ impl Options {
 
         // Build the Platform
         let platform = match platform_type {
-            Some(platform_str) =>
-                Platform::from_cli(platform_str).ok_or(
-                    RuntimeError::InvalidOptions(
-                        format!(
-                            "{platform_str} is not a valid platform! Must be one of <{SUPPORTED_PLATFORMS}>"
-                        )
-                    )
-                )?,
+            Some(platform_str) => {
+                Platform::from_cli(platform_str).ok_or(RuntimeError::InvalidOptions(format!(
+                "{platform_str} is not a valid platform! Must be one of <{SUPPORTED_PLATFORMS}>"
+            )))?
+            }
             None => Platform::determine(&db_path),
         };
 
@@ -286,11 +247,9 @@ impl Options {
         if let Some(path) = attachment_root {
             let custom_attachment_path = PathBuf::from(path);
             if !custom_attachment_path.exists() {
-                return Err(
-                    RuntimeError::InvalidOptions(
-                        format!("Supplied {OPTION_ATTACHMENT_ROOT} `{path}` does not exist!")
-                    )
-                );
+                return Err(RuntimeError::InvalidOptions(format!(
+                    "Supplied {OPTION_ATTACHMENT_ROOT} `{path}` does not exist!"
+                )));
             }
         }
 
@@ -350,12 +309,11 @@ impl Options {
 /// We have to allocate a `PathBuf` here because it can be created from data owned by this function in the default state
 fn validate_path(
     export_path: Option<&String>,
-    export_type: &Option<&ExportType>
+    export_type: &Option<&ExportType>,
 ) -> Result<PathBuf, RuntimeError> {
     // Build a path from the user-provided data or the default location
-    let resolved_path = PathBuf::from(
-        export_path.unwrap_or(&format!("{}/{DEFAULT_OUTPUT_DIR}", home()))
-    );
+    let resolved_path =
+        PathBuf::from(export_path.unwrap_or(&format!("{}/{DEFAULT_OUTPUT_DIR}", home())));
 
     // If there is an export type selected, ensure we do not overwrite files of the same type
     if let Some(export_type) = export_type {
@@ -371,11 +329,10 @@ fn validate_path(
                 Ok(files) => {
                     let export_type_extension = export_type.to_string();
                     for file in files.flatten() {
-                        if
-                            file
-                                .path()
-                                .extension()
-                                .is_some_and(|s| s.to_str().unwrap_or("") == export_type_extension)
+                        if file
+                            .path()
+                            .extension()
+                            .is_some_and(|s| s.to_str().unwrap_or("") == export_type_extension)
                         {
                             return Err(
                                 RuntimeError::InvalidOptions(
@@ -388,13 +345,9 @@ fn validate_path(
                     }
                 }
                 Err(why) => {
-                    return Err(
-                        RuntimeError::InvalidOptions(
-                            format!(
-                                "{path_word} export path {resolved_path:?} is not a valid directory: {why}"
-                            )
-                        )
-                    );
+                    return Err(RuntimeError::InvalidOptions(format!(
+                        "{path_word} export path {resolved_path:?} is not a valid directory: {why}"
+                    )));
                 }
             }
         }
@@ -591,15 +544,13 @@ mod arg_tests {
     use std::fs;
 
     use imessage_database::util::{
-        dirs::default_db_path,
-        platform::Platform,
-        query_context::QueryContext,
+        dirs::default_db_path, platform::Platform, query_context::QueryContext,
     };
 
     use crate::app::{
-        compatibility::attachment_manager::{ AttachmentManager, AttachmentManagerMode },
+        compatibility::attachment_manager::{AttachmentManager, AttachmentManagerMode},
         export_type::ExportType,
-        options::{ get_command, validate_path, Options },
+        options::{get_command, validate_path, Options},
     };
 
     #[test]
@@ -1077,7 +1028,10 @@ mod path_tests {
     use std::io::Write;
     use std::path::PathBuf;
 
-    use crate::app::{ export_type::ExportType, options::{ validate_path, DEFAULT_OUTPUT_DIR } };
+    use crate::app::{
+        export_type::ExportType,
+        options::{validate_path, DEFAULT_OUTPUT_DIR},
+    };
     use imessage_database::util::dirs::home;
 
     #[test]
@@ -1141,6 +1095,9 @@ mod path_tests {
 
         let result = validate_path(export_path, &export_type);
 
-        assert_eq!(result.unwrap(), PathBuf::from(&format!("{}/{DEFAULT_OUTPUT_DIR}", home())));
+        assert_eq!(
+            result.unwrap(),
+            PathBuf::from(&format!("{}/{DEFAULT_OUTPUT_DIR}", home()))
+        );
     }
 }

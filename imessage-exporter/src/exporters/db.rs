@@ -1,14 +1,6 @@
-use std::{
-    borrow::Cow,
-    collections::HashMap,
-    fs::File,
-    io::{BufWriter, Write},
-    path::PathBuf,
-};
-
 use crate::{
     app::{
-        attachment_manager::AttachmentManager, error::RuntimeError,
+        compatibility::attachment_manager::AttachmentManagerMode, error::RuntimeError,
         progress::build_progress_bar_export, runtime::Config,
     },
     exporters::exporter::Exporter,
@@ -23,7 +15,17 @@ use imessage_database::{
     },
     util::dates::format_utc,
 };
+use imessage_database::{
+    message_types::digital_touch::DigitalTouch, tables::messages::models::AttachmentMeta,
+};
 use rand::Rng;
+use std::{
+    borrow::Cow,
+    collections::HashMap,
+    fs::File,
+    io::{BufWriter, Write},
+    path::PathBuf,
+};
 
 use super::exporter::{BalloonFormatter, Writer};
 use chrono::NaiveDateTime;
@@ -175,7 +177,9 @@ impl<'a> DB<'a> {
         if message.num_attachments > 0 {
             if let Ok(mut attachments) = Attachment::from_message(&self.config.db, message) {
                 for attachment in attachments.iter_mut() {
-                    if let Ok(path) = self.format_attachment(attachment, message) {
+                    if let Ok(path) =
+                        self.format_attachment(attachment, message, &AttachmentMeta::default())
+                    {
                         attachment_paths.push(path);
                     }
                 }
@@ -383,7 +387,11 @@ impl<'a> Writer<'a> for DB<'a> {
                             let result = self.format_sticker(attachment, message);
                             self.add_line(&mut formatted_message, &result, &indent);
                         } else {
-                            match self.format_attachment(attachment, message) {
+                            match self.format_attachment(
+                                attachment,
+                                message,
+                                &AttachmentMeta::default(),
+                            ) {
                                 Ok(result) => {
                                     attachment_index += 1;
                                     self.add_line(&mut formatted_message, &result, &indent);
@@ -490,6 +498,7 @@ impl<'a> Writer<'a> for DB<'a> {
         &self,
         attachment: &'a mut Attachment,
         message: &Message,
+        metadata: &AttachmentMeta,
     ) -> Result<String, &'a str> {
         // Copy the file, if requested
         self.config
@@ -497,7 +506,13 @@ impl<'a> Writer<'a> for DB<'a> {
             .attachment_manager
             .handle_attachment(message, attachment, self.config)
             .ok_or(attachment.filename())?;
-
+        // Append the transcription if one is provided
+        if let Some(transcription) = metadata.transcription {
+            return Ok(format!(
+                "{}\nTranscription: {transcription}",
+                self.config.message_attachment_path(attachment)
+            ));
+        }
         // Build a relative filepath from the fully qualified one on the `Attachment`
         Ok(attachment
             .filename
@@ -511,7 +526,8 @@ impl<'a> Writer<'a> for DB<'a> {
             message.is_from_me(),
             &message.destination_caller_id,
         );
-        match self.format_attachment(sticker, message) {
+
+        match self.format_attachment(sticker, message, &AttachmentMeta::default()) {
             Ok(path_to_sticker) => {
                 let sticker_effect = sticker.get_sticker_effect(
                     &self.config.options.platform,
@@ -577,6 +593,7 @@ impl<'a> Writer<'a> for DB<'a> {
                             CustomBalloon::CheckIn => self.format_check_in(&bubble, indent),
                             CustomBalloon::FindMy => self.format_find_my(&bubble, indent),
                             CustomBalloon::Handwriting => unreachable!(),
+                            CustomBalloon::DigitalTouch => unreachable!(),
                             CustomBalloon::URL => unreachable!(),
                         },
                         Err(why) => {
@@ -802,6 +819,9 @@ impl<'a> BalloonFormatter<&'a str> for DB<'a> {
         // We want to keep the newlines between blocks, but the last one should be removed
         out_s.strip_suffix('\n').unwrap_or(&out_s).to_string()
     }
+    fn format_digital_touch(&self, _: &Message, balloon: &DigitalTouch, indent: &str) -> String {
+        format!("{indent}Digital Touch Message: {:?}", balloon)
+    }
 
     fn format_music(&self, balloon: &MusicMessage, indent: &str) -> String {
         let mut out_s = String::new();
@@ -938,11 +958,11 @@ impl<'a> BalloonFormatter<&'a str> for DB<'a> {
         balloon: &HandwrittenMessage,
         indent: &str,
     ) -> String {
-        match self.config.options.attachment_manager {
-            AttachmentManager::Disabled => balloon
+        match self.config.options.attachment_manager.mode {
+            AttachmentManagerMode::Disabled => balloon
                 .render_ascii(40)
                 .replace("\n", &format!("{indent}\n")),
-            AttachmentManager::Compatible | AttachmentManager::Efficient => self
+            _ => self
                 .config
                 .options
                 .attachment_manager
@@ -960,7 +980,6 @@ impl<'a> BalloonFormatter<&'a str> for DB<'a> {
                 }),
         }
     }
-
     fn format_apple_pay(&self, balloon: &AppMessage, indent: &str) -> String {
         let mut out_s = String::from(indent);
         if let Some(caption) = balloon.caption {

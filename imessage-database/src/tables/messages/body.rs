@@ -303,7 +303,7 @@ mod typedstream_tests {
         },
         tables::messages::{
             body::parse_body_typedstream,
-            models::{BubbleComponent, TextAttributes, AttachmentMeta},
+            models::{AttachmentMeta, BubbleComponent, TextAttributes},
             Message,
         },
         util::typedstream::parser::TypedStreamReader,
@@ -1011,7 +1011,7 @@ mod legacy_tests {
         message_types::text_effects::TextEffect,
         tables::messages::{
             body::parse_body_legacy,
-            models::{BubbleComponent, TextAttributes, AttachmentMeta},
+            models::{AttachmentMeta, BubbleComponent, TextAttributes},
             Message,
         },
     };

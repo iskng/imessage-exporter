@@ -2589,18 +2589,14 @@ mod parser_tests {
                     name: "NSString".to_string(),
                     version: 1,
                 },
-                vec![OutputData::String(
-                    "IMAudioTranscription".to_string(),
-                )],
+                vec![OutputData::String("IMAudioTranscription".to_string())],
             ),
             Archivable::Object(
                 Class {
                     name: "NSString".to_string(),
                     version: 1,
                 },
-                vec![OutputData::String(
-                    "This is a test".to_string(),
-                )],
+                vec![OutputData::String("This is a test".to_string())],
             ),
             Archivable::Object(
                 Class {

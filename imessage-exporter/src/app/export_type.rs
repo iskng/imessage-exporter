@@ -34,6 +34,8 @@ impl ExportType {
         match self {
             ExportType::Html => ".html",
             ExportType::Txt => ".txt",
+            ExportType::Csv => ".csv",
+            ExportType::Db => ".db",
         }
     }
 }

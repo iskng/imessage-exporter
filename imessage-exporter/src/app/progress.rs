@@ -2,7 +2,6 @@
  Defines the export progress bar.
 */
 
-
 use std::time::Duration;
 
 use indicatif::{ProgressBar, ProgressStyle};

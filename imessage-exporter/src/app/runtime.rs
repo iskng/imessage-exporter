@@ -4,7 +4,7 @@
 
 use std::{
     cmp::min,
-    collections::{ BTreeSet, HashMap, HashSet },
+    collections::{BTreeSet, HashMap, HashSet},
     fs::create_dir_all,
     path::PathBuf,
 };
@@ -15,15 +15,11 @@ use rusqlite::Connection;
 
 use crate::{
     app::{
-        compatibility::attachment_manager::AttachmentManagerMode,
-        error::RuntimeError,
-        export_type::ExportType,
-        options::Options,
-        sanitizers::sanitize_filename,
+        compatibility::attachment_manager::AttachmentManagerMode, error::RuntimeError,
+        export_type::ExportType, options::Options, sanitizers::sanitize_filename,
     },
-    Exporter,
-    HTML,
-    TXT,
+    exporters::{csv::CSV, db::DB},
+    Exporter, HTML, TXT,
 };
 
 use imessage_database::{
@@ -35,19 +31,11 @@ use imessage_database::{
         handle::Handle,
         messages::Message,
         table::{
-            get_connection,
-            get_db_size,
-            Cacheable,
-            Deduplicate,
-            Diagnostic,
-            ATTACHMENTS_DIR,
-            MAX_LENGTH,
-            ME,
-            ORPHANED,
-            UNKNOWN,
+            get_connection, get_db_size, Cacheable, Deduplicate, Diagnostic, ATTACHMENTS_DIR,
+            MAX_LENGTH, ME, ORPHANED, UNKNOWN,
         },
     },
-    util::{ dates::get_offset, size::format_file_size },
+    util::{dates::get_offset, size::format_file_size},
 };
 
 /// Stores the application state and handles application lifecycle
@@ -119,14 +107,13 @@ impl Config {
                 }
                 path.display().to_string()
             }
-            None =>
-                attachment
-                    .resolved_attachment_path(
-                        &self.options.platform,
-                        &self.options.db_path,
-                        self.options.attachment_root.as_deref()
-                    )
-                    .unwrap_or(attachment.filename().to_string()),
+            None => attachment
+                .resolved_attachment_path(
+                    &self.options.platform,
+                    &self.options.db_path,
+                    self.options.attachment_root.as_deref(),
+                )
+                .unwrap_or(attachment.filename().to_string()),
         }
     }
 
@@ -147,14 +134,21 @@ impl Config {
         let mut filename = match &chatroom.display_name() {
             // If there is a display name, use that
             Some(name) => {
-                format!("{} - {}", &name[..min(MAX_LENGTH, name.len())], chatroom.rowid)
+                format!(
+                    "{} - {}",
+                    &name[..min(MAX_LENGTH, name.len())],
+                    chatroom.rowid
+                )
             }
             // Fallback if there is no name set
             None => {
                 if let Some(participants) = self.chatroom_participants.get(&chatroom.rowid) {
                     self.filename_from_participants(participants)
                 } else {
-                    eprintln!("Found error: message chat ID {} has no members!", chatroom.rowid);
+                    eprintln!(
+                        "Found error: message chat ID {} has no members!",
+                        chatroom.rowid
+                    );
                     chatroom.chat_identifier.clone()
                 }
             }
@@ -221,9 +215,8 @@ impl Config {
         eprintln!("  [1/4] Caching chats...");
         let chatrooms = Chat::cache(&conn).map_err(RuntimeError::DatabaseError)?;
         eprintln!("  [2/4] Caching chatrooms...");
-        let chatroom_participants = ChatToHandle::cache(&conn).map_err(
-            RuntimeError::DatabaseError
-        )?;
+        let chatroom_participants =
+            ChatToHandle::cache(&conn).map_err(RuntimeError::DatabaseError)?;
         eprintln!("  [3/4] Caching participants...");
         let participants = Handle::cache(&conn).map_err(RuntimeError::DatabaseError)?;
         eprintln!("  [4/4] Caching tapbacks...");
@@ -255,24 +248,32 @@ impl Config {
             let mut included_handles: BTreeSet<i32> = BTreeSet::new();
 
             // First: Scan the list of participants for included handle IDs
-            self.participants.iter().for_each(|(handle_id, handle_name)| {
-                parsed_handle_filter.iter().for_each(|included_name| {
-                    if handle_name.contains(included_name) {
-                        included_handles.insert(*handle_id);
-                    }
+            self.participants
+                .iter()
+                .for_each(|(handle_id, handle_name)| {
+                    parsed_handle_filter.iter().for_each(|included_name| {
+                        if handle_name.contains(included_name) {
+                            included_handles.insert(*handle_id);
+                        }
+                    });
                 });
-            });
 
             // Second, scan the list of chatrooms for IDs that contain the selected participants
-            self.chatroom_participants.iter().for_each(|(chat_id, participants)| {
-                if !participants.is_disjoint(&included_handles) {
-                    included_chatrooms.insert(*chat_id);
-                }
-            });
+            self.chatroom_participants
+                .iter()
+                .for_each(|(chat_id, participants)| {
+                    if !participants.is_disjoint(&included_handles) {
+                        included_chatrooms.insert(*chat_id);
+                    }
+                });
 
-            self.options.query_context.set_selected_handle_ids(included_handles);
+            self.options
+                .query_context
+                .set_selected_handle_ids(included_handles);
 
-            self.options.query_context.set_selected_chat_ids(included_chatrooms);
+            self.options
+                .query_context
+                .set_selected_chat_ids(included_chatrooms);
 
             self.log_filtered_handles_and_chats()
         }
@@ -280,12 +281,10 @@ impl Config {
 
     /// If we set some filtered chatrooms, emit how many will be included in the export
     fn log_filtered_handles_and_chats(&self) {
-        if
-            let (Some(selected_handle_ids), Some(selected_chat_ids)) = (
-                &self.options.query_context.selected_handle_ids,
-                &self.options.query_context.selected_chat_ids,
-            )
-        {
+        if let (Some(selected_handle_ids), Some(selected_chat_ids)) = (
+            &self.options.query_context.selected_handle_ids,
+            &self.options.query_context.selected_chat_ids,
+        ) {
             let unique_handle_ids: HashSet<Option<&i32>> = selected_handle_ids
                 .iter()
                 .map(|handle_id| self.real_participants.get(handle_id))
@@ -315,42 +314,38 @@ impl Config {
     fn ensure_free_space(&self) -> Result<(), RuntimeError> {
         // Export size is usually about 6% the size of the db; we divide by 10 to over-estimate about 10% of the total size
         // for some safe headroom
-        let total_db_size = get_db_size(&self.options.db_path).map_err(
-            RuntimeError::DatabaseError
-        )?;
+        let total_db_size =
+            get_db_size(&self.options.db_path).map_err(RuntimeError::DatabaseError)?;
         let mut estimated_export_size = total_db_size / 10;
 
-        let free_space_at_location = available_space(&self.options.export_path).map_err(
-            RuntimeError::DiskError
-        )?;
+        let free_space_at_location =
+            available_space(&self.options.export_path).map_err(RuntimeError::DiskError)?;
 
         // Validate that there is enough disk space free to write the export
         if let AttachmentManagerMode::Disabled = self.options.attachment_manager.mode {
             if estimated_export_size >= free_space_at_location {
-                return Err(
-                    RuntimeError::NotEnoughAvailableSpace(
-                        estimated_export_size,
-                        free_space_at_location
-                    )
-                );
+                return Err(RuntimeError::NotEnoughAvailableSpace(
+                    estimated_export_size,
+                    free_space_at_location,
+                ));
             }
         } else {
-            let total_attachment_size = Attachment::get_total_attachment_bytes(
-                &self.db,
-                &self.options.query_context
-            ).map_err(RuntimeError::DatabaseError)?;
+            let total_attachment_size =
+                Attachment::get_total_attachment_bytes(&self.db, &self.options.query_context)
+                    .map_err(RuntimeError::DatabaseError)?;
             estimated_export_size += total_attachment_size;
             if estimated_export_size + total_attachment_size >= free_space_at_location {
-                return Err(
-                    RuntimeError::NotEnoughAvailableSpace(
-                        estimated_export_size + total_attachment_size,
-                        free_space_at_location
-                    )
-                );
+                return Err(RuntimeError::NotEnoughAvailableSpace(
+                    estimated_export_size + total_attachment_size,
+                    free_space_at_location,
+                ));
             }
         }
 
-        println!("Estimated export size: {}", format_file_size(estimated_export_size));
+        println!(
+            "Estimated export size: {}",
+            format_file_size(estimated_export_size)
+        );
 
         Ok(())
     }
@@ -367,11 +362,13 @@ impl Config {
         println!("Global diagnostic data:");
 
         let total_db_size = get_db_size(&self.options.db_path)?;
-        println!("    Total database size: {}", format_file_size(total_db_size));
-
-        let unique_handles: HashSet<i32> = HashSet::from_iter(
-            self.real_participants.values().cloned()
+        println!(
+            "    Total database size: {}",
+            format_file_size(total_db_size)
         );
+
+        let unique_handles: HashSet<i32> =
+            HashSet::from_iter(self.real_participants.values().cloned());
         let duplicated_handles = self.participants.len() - unique_handles.len();
         if duplicated_handles > 0 {
             println!("    Duplicated contacts: {duplicated_handles}");
@@ -412,11 +409,10 @@ impl Config {
             // Ensure that if we want to filter on things, we have stuff to filter for
             if let Some(filters) = &self.options.conversation_filter {
                 if !self.options.query_context.has_filters() {
-                    return Err(
-                        RuntimeError::InvalidOptions(
-                            format!("Selected filter `{}` does not match any participants!", filters)
-                        )
-                    );
+                    return Err(RuntimeError::InvalidOptions(format!(
+                        "Selected filter `{}` does not match any participants!",
+                        filters
+                    )));
                 }
             }
 
@@ -424,7 +420,10 @@ impl Config {
             create_dir_all(&self.options.export_path).map_err(RuntimeError::DiskError)?;
 
             // Ensure the path we want to copy attachments to exists, if requested
-            if !matches!(self.options.attachment_manager.mode, AttachmentManagerMode::Disabled) {
+            if !matches!(
+                self.options.attachment_manager.mode,
+                AttachmentManagerMode::Disabled
+            ) {
                 create_dir_all(self.attachment_path()).map_err(RuntimeError::DiskError)?;
             }
 
@@ -461,7 +460,7 @@ impl Config {
         &'a self,
         handle_id: Option<i32>,
         is_from_me: bool,
-        destination_caller_id: &'b Option<String>
+        destination_caller_id: &'b Option<String>,
     ) -> &'a str {
         if is_from_me {
             if self.options.use_caller_id {
@@ -550,8 +549,8 @@ impl Config {
 
 #[cfg(test)]
 mod filename_tests {
-    use crate::{ Config, Options };
-    use imessage_database::tables::{ chat::Chat, table::MAX_LENGTH };
+    use crate::{Config, Options};
+    use imessage_database::tables::{chat::Chat, table::MAX_LENGTH};
     use std::collections::BTreeSet;
 
     fn fake_chat() -> Chat {
@@ -600,35 +599,35 @@ mod filename_tests {
         // Create participant data
         app.participants.insert(
             10,
-            "Person With An Extremely and Excessively Long Name 10".to_string()
+            "Person With An Extremely and Excessively Long Name 10".to_string(),
         );
         app.participants.insert(
             11,
-            "Person With An Extremely and Excessively Long Name 11".to_string()
+            "Person With An Extremely and Excessively Long Name 11".to_string(),
         );
         app.participants.insert(
             12,
-            "Person With An Extremely and Excessively Long Name 12".to_string()
+            "Person With An Extremely and Excessively Long Name 12".to_string(),
         );
         app.participants.insert(
             13,
-            "Person With An Extremely and Excessively Long Name 13".to_string()
+            "Person With An Extremely and Excessively Long Name 13".to_string(),
         );
         app.participants.insert(
             14,
-            "Person With An Extremely and Excessively Long Name 14".to_string()
+            "Person With An Extremely and Excessively Long Name 14".to_string(),
         );
         app.participants.insert(
             15,
-            "Person With An Extremely and Excessively Long Name 15".to_string()
+            "Person With An Extremely and Excessively Long Name 15".to_string(),
         );
         app.participants.insert(
             16,
-            "Person With An Extremely and Excessively Long Name 16".to_string()
+            "Person With An Extremely and Excessively Long Name 16".to_string(),
         );
         app.participants.insert(
             17,
-            "Person With An Extremely and Excessively Long Name 17".to_string()
+            "Person With An Extremely and Excessively Long Name 17".to_string(),
         );
 
         // Add participants
@@ -769,7 +768,7 @@ mod filename_tests {
 
 #[cfg(test)]
 mod who_tests {
-    use crate::{ Config, Options };
+    use crate::{Config, Options};
     use imessage_database::tables::chat::Chat;
 
     fn fake_chat() -> Chat {
@@ -950,7 +949,7 @@ mod who_tests {
 
 #[cfg(test)]
 mod directory_tests {
-    use crate::{ Config, Options };
+    use crate::{Config, Options};
     use std::path::PathBuf;
 
     #[test]
@@ -1046,7 +1045,7 @@ mod directory_tests {
 mod chat_filter_tests {
     use std::collections::BTreeSet;
 
-    use crate::{ app::export_type::ExportType, Config, Options };
+    use crate::{app::export_type::ExportType, Config, Options};
 
     #[test]
     fn can_generate_filter_string_multiple() {
@@ -1154,7 +1153,13 @@ mod chat_filter_tests {
         app.resolve_filtered_handles();
         // For the test, sort the output so it is always the same
 
-        assert_eq!(app.options.query_context.selected_handle_ids, Some(BTreeSet::from([13])));
-        assert_eq!(app.options.query_context.selected_chat_ids, Some(BTreeSet::from([4, 6])));
+        assert_eq!(
+            app.options.query_context.selected_handle_ids,
+            Some(BTreeSet::from([13]))
+        );
+        assert_eq!(
+            app.options.query_context.selected_chat_ids,
+            Some(BTreeSet::from([4, 6]))
+        );
     }
 }
