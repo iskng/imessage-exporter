@@ -59,7 +59,7 @@ pub enum Archivable {
 
 impl Archivable {
     /// If `self` is an [`Object`](Archivable::Object) that contains a [`Class`] named `NSString` or `NSMutableString`,
-    /// extract a Rust string slice from the associated [`Data`](Archivable::Data).
+    /// extract a [`&str`](str) from the associated [`Data`](Archivable::Data).
     ///
     /// # Example
     ///
@@ -95,7 +95,7 @@ impl Archivable {
         None
     }
 
-    /// If `self` is an [`Object`](Archivable::Object) that contains a [`Class`] named `NSNumber`,
+    /// If `self` is an [`Object`](Archivable::Object) that contains a [`Class`] named `NSNumber` pointing to a [`SignedInteger`](OutputData::SignedInteger),
     /// extract an [`i64`] from the [`Data`](Archivable::Data).
     ///
     /// # Example
@@ -110,7 +110,7 @@ impl Archivable {
     ///     },
     ///     vec![OutputData::SignedInteger(100)]
     /// );
-    /// println!("{:?}", nsnumber.as_nsnumber()); // Some(100)
+    /// println!("{:?}", nsnumber.as_nsnumber_int()); // Some(100)
     ///
     /// let not_nsnumber = Archivable::Object(
     ///     Class {
@@ -119,12 +119,49 @@ impl Archivable {
     ///     },
     ///     vec![OutputData::String("Hello world".to_string())]
     /// );
-    /// println!("{:?}", not_nsnumber.as_nsnumber()); // None
+    /// println!("{:?}", not_nsnumber.as_nsnumber_int()); // None
     /// ```
-    pub fn as_nsnumber(&self) -> Option<&i64> {
+    pub fn as_nsnumber_int(&self) -> Option<&i64> {
         if let Archivable::Object(Class { name, .. }, value) = self {
             if name == "NSNumber" {
                 if let Some(OutputData::SignedInteger(num)) = value.first() {
+                    return Some(num);
+                }
+            }
+        }
+        None
+    }
+
+    /// If `self` is an [`Object`](Archivable::Object) that contains a [`Class`] named `NSNumber` pointing to a [`Double`](OutputData::Double),
+    /// extract an [`f64`] from the [`Data`](Archivable::Data).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use imessage_database::util::typedstream::models::{Archivable, Class, OutputData};
+    ///
+    /// let nsnumber = Archivable::Object(
+    ///     Class {
+    ///         name: "NSNumber".to_string(),
+    ///         version: 1
+    ///     },
+    ///     vec![OutputData::Double(100.001)]
+    /// );
+    /// println!("{:?}", nsnumber.as_nsnumber_float()); // Some(100.001)
+    ///
+    /// let not_nsnumber = Archivable::Object(
+    ///     Class {
+    ///         name: "NSString".to_string(),
+    ///         version: 1
+    ///     },
+    ///     vec![OutputData::String("Hello world".to_string())]
+    /// );
+    /// println!("{:?}", not_nsnumber.as_nsnumber_float()); // None
+    /// ```
+    pub fn as_nsnumber_float(&self) -> Option<&f64> {
+        if let Archivable::Object(Class { name, .. }, value) = self {
+            if name == "NSNumber" {
+                if let Some(OutputData::Double(num)) = value.first() {
                     return Some(num);
                 }
             }

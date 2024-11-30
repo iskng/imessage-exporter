@@ -83,7 +83,9 @@ impl HandwrittenMessage {
     pub fn render_ascii(&self, max_height: usize) -> String {
         // Create a blank canvas filled with spaces
         let h = max_height.min(self.height as usize);
-        let w = ((self.width as usize) * h) / (self.height as usize);
+        let w = ((self.width as usize) * h)
+            .checked_div(self.height as usize)
+            .unwrap_or(0);
         let mut canvas = vec![vec![' '; w]; h];
 
         // Plot the lines on the canvas
@@ -228,7 +230,9 @@ fn fit_strokes(
 
 /// Resize converts `v` from a coordinate where `max_v` is the current height/width and `box_size` is the wanted height/width.
 fn resize(v: u16, box_size: u16, max_v: u16) -> u16 {
-    (v as i64 * box_size as i64 / max_v as i64) as u16
+    (v as i64 * box_size as i64)
+        .checked_div(max_v as i64)
+        .unwrap_or(0) as u16
 }
 
 /// Iterates through each point in each stroke and extracts the maximum `x`, `y`, and `width` values.
@@ -338,6 +342,7 @@ fn parse_coordinates(b1: u8, b2: u8) -> u16 {
 #[cfg(test)]
 mod tests {
     use crate::message_types::handwriting::models::{HandwrittenMessage, Point};
+
     use std::env::current_dir;
     use std::fs::File;
     use std::io::Read;

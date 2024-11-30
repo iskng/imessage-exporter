@@ -136,7 +136,7 @@ pub const DEFAULT_PATH_IOS: &str = "3d/3d0d7e5fb2ce288813306e4d4636395e047a3d28"
 /// Chat name reserved for messages that do not belong to a chat in the table
 pub const ORPHANED: &str = "orphaned";
 /// Maximum length a filename can be
-pub const MAX_LENGTH: usize = 240;
+pub const MAX_LENGTH: usize = 235;
 /// Replacement text sent in Fitness.app messages
 pub const FITNESS_RECEIVER: &str = "$(kIMTranscriptPluginBreadcrumbTextReceiverIdentifier)";
 /// Name for attachments directory in exports

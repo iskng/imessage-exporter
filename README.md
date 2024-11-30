@@ -24,13 +24,13 @@ Installation instructions for the binary are located [here](imessage-exporter/RE
 
 ## Library
 
-The `imessage_database` library provides models that allow us to access iMessage information as native data structures.
+The `imessage_database` library provides models that allow us to access iMessage information as native, cross-platform data structures.
 
 Documentation for the library is located [here](imessage-database/README.md).
 
 ### Supported Features
 
-This crate supports every iMessage feature as of macOS 15.1 (24B83) and iOS 18.1 (22B83):
+This crate supports every iMessage feature as of macOS 15.1.1 (24B91) and iOS 18.1.1 (22B91):
 
 - Multi-part messages
 - Replies/Threads
@@ -40,7 +40,9 @@ This crate supports every iMessage feature as of macOS 15.1 (24B83) and iOS 18.1
 - Tapbacks
 - Stickers
 - Apple Pay
+- Digital Touch
 - URL Previews
+- Audio messages
 - App Integrations
 - Edited messages
 - Handwritten messages

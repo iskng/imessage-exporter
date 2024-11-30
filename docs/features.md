@@ -47,13 +47,16 @@ This tool targets the current latest public release for macOS and iMessage. It m
 - Attachments
   - Any type of attachment that can be displayed on the web is embedded in the HTML exports
   - Attachments can be copied to the export directory or referenced in-place
-  - Less-compatible images can be converted for even more portable exports:
-    - Attachment `HEIC` files convert to `JPEG`
+  - Less-compatible attachments can be converted for even more portable exports:
+    - Image `HEIC` files convert to `JPEG`
     - Sticker `HEIC` files convert to `PNG`
-    - Sticker `HEICS` files convert to `GIF`
+    - Animated Sticker `HEICS` (HEIC sequence) files convert to `GIF`
+    - Video `MOV` files convert to `mp4`
+    - Audio `CAF` files convert to `mp4`
   - Attachments are displayed as
     - File paths in TXT exports
     - Embeds in HTML exports (including `<img>`, `<video>`, and `<audio>`)
+      - [Audio messages](https://support.apple.com/guide/messages/send-an-audio-message-icht204ef108/mac) include embedded transcripts
   - Attachment date metadata is set to the date and time of message receipt
 - Expressives
   - Detects both bubble and screen [effects](https://support.apple.com/en-us/104970)
@@ -95,7 +98,10 @@ This tool targets the current latest public release for macOS and iMessage. It m
     - Displayed as embedded `svg` in HTML exports
     - TXT export behavior depends on attachment settings:
       - `disabled`: embedded inline as an `ascii` graphic
-      - `compatible, efficient`: saved as an `svg` file
+      - `clone, basic, full`: saved as an `svg` file
+- Digital Touch
+  - Parses the protobuf payload to extract [Digital Touch](https://support.apple.com/guide/ipod-touch/send-a-digital-touch-effect-iph3fadba219/ios) message data
+    - Displayed as text that describes the type of message sent in HTML and TXT exports
 - Duplicated group chats
   - Handles (participants) and chats (threads) can become duplicated
   - On startup:

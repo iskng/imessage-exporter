@@ -157,7 +157,7 @@ impl Table for Message {
                  (SELECT COUNT(*) FROM {MESSAGE} m2 WHERE m2.thread_originator_guid = m.guid) as num_replies
              FROM
                  message as m
-                 LEFT JOIN {CHAT_MESSAGE_JOIN} as c ON m.ROWID = c.message_id
+             LEFT JOIN {CHAT_MESSAGE_JOIN} as c ON m.ROWID = c.message_id
              ORDER BY
                  m.date;
             "
@@ -171,7 +171,7 @@ impl Table for Message {
                  (SELECT COUNT(*) FROM {MESSAGE} m2 WHERE m2.thread_originator_guid = m.guid) as num_replies
              FROM
                  message as m
-                 LEFT JOIN {CHAT_MESSAGE_JOIN} as c ON m.ROWID = c.message_id
+             LEFT JOIN {CHAT_MESSAGE_JOIN} as c ON m.ROWID = c.message_id
              ORDER BY
                  m.date;
             "
@@ -186,7 +186,7 @@ impl Table for Message {
                  0 as num_replies
              FROM
                  message as m
-                 LEFT JOIN {CHAT_MESSAGE_JOIN} as c ON m.ROWID = c.message_id
+             LEFT JOIN {CHAT_MESSAGE_JOIN} as c ON m.ROWID = c.message_id
              ORDER BY
                  m.date;
             "
@@ -225,7 +225,7 @@ impl Diagnostic for Message {
                 COUNT(m.rowid)
             FROM
             {MESSAGE} as m
-                LEFT JOIN {CHAT_MESSAGE_JOIN} as c ON m.rowid = c.message_id
+            LEFT JOIN {CHAT_MESSAGE_JOIN} as c ON m.rowid = c.message_id
             WHERE
                 c.chat_id is NULL
             ORDER BY
@@ -318,7 +318,7 @@ impl Cacheable for Message {
                  (SELECT COUNT(*) FROM {MESSAGE} m2 WHERE m2.thread_originator_guid = m.guid) as num_replies
              FROM 
                  message as m 
-                 LEFT JOIN {CHAT_MESSAGE_JOIN} as c ON m.ROWID = c.message_id
+             LEFT JOIN {CHAT_MESSAGE_JOIN} as c ON m.ROWID = c.message_id
              WHERE m.associated_message_guid NOT NULL
             "
         ));
@@ -420,10 +420,10 @@ impl Message {
     ///
     /// ```
     /// use imessage_database::message_types::text_effects::TextEffect;
-    /// use imessage_database::tables::messages::models::{TextAttributes, BubbleComponent};
+    /// use imessage_database::tables::messages::{models::{TextAttributes, BubbleComponent, AttachmentMeta}};
     ///  
     /// let result = vec![
-    ///     BubbleComponent::Attachment(""),
+    ///     BubbleComponent::Attachment(AttachmentMeta::default()),
     ///     BubbleComponent::Text(vec![TextAttributes::new(3, 24, TextEffect::Default)]),
     /// ];
     /// ```
@@ -537,6 +537,11 @@ impl Message {
         matches!(self.variant(), Variant::App(CustomBalloon::Handwriting))
     }
 
+    /// `true` if the message is a [`Digital Touch`](crate::message_types::digital_touch::models), else `false`
+    pub fn is_digital_touch(&self) -> bool {
+        matches!(self.variant(), Variant::App(CustomBalloon::DigitalTouch))
+    }
+
     /// `true` if the message was [`Edited`](crate::message_types::edited), else `false`
     pub fn is_edited(&self) -> bool {
         self.date_edited != 0
@@ -617,6 +622,41 @@ impl Message {
         0
     }
 
+    /// Generate the SQL `WHERE` clause described by a [`QueryContext`]
+    pub(crate) fn generate_filter_statement(context: &QueryContext) -> String {
+        let mut filters = String::new();
+        if let Some(start) = context.start {
+            filters.push_str(&format!("    m.date >= {start}"));
+        }
+        if let Some(end) = context.end {
+            if !filters.is_empty() {
+                filters.push_str(" AND ");
+            }
+            filters.push_str(&format!("    m.date <= {end}"));
+        }
+        if let Some(chat_ids) = &context.selected_chat_ids {
+            if !filters.is_empty() {
+                filters.push_str(" AND ");
+            }
+            filters.push_str(&format!(
+                "    c.chat_id IN ({})",
+                chat_ids
+                    .iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<String>>()
+                    .join(", "),
+            ));
+        }
+
+        if !filters.is_empty() {
+            return format!(
+                " WHERE
+                 {filters}"
+            );
+        }
+        filters
+    }
+
     /// Get the number of messages in the database
     ///
     /// # Example:
@@ -635,8 +675,12 @@ impl Message {
     pub fn get_count(db: &Connection, context: &QueryContext) -> Result<u64, TableError> {
         let mut statement = if context.has_filters() {
             db.prepare(&format!(
-                "SELECT COUNT(*) FROM {MESSAGE} as m {}",
-                context.generate_filter_statement("m.date")
+                "SELECT 
+                    COUNT(*) 
+                 FROM {MESSAGE} as m
+                 LEFT JOIN {CHAT_MESSAGE_JOIN} as c ON m.ROWID = c.message_id
+                 {}",
+                Self::generate_filter_statement(context)
             ))
             .map_err(TableError::Messages)?
         } else {
@@ -671,7 +715,7 @@ impl Message {
             return Self::get(db);
         }
 
-        let filters = context.generate_filter_statement("m.date");
+        let filters = Self::generate_filter_statement(context);
 
         // If database has `thread_originator_guid`, we can parse replies, otherwise default to 0
         Ok(db.prepare(&format!(
@@ -683,7 +727,7 @@ impl Message {
                      (SELECT COUNT(*) FROM {MESSAGE} m2 WHERE m2.thread_originator_guid = m.guid) as num_replies
                  FROM
                      message as m
-                     LEFT JOIN {CHAT_MESSAGE_JOIN} as c ON m.ROWID = c.message_id
+                 LEFT JOIN {CHAT_MESSAGE_JOIN} as c ON m.ROWID = c.message_id
                  {filters}
                  ORDER BY
                      m.date;
@@ -698,7 +742,7 @@ impl Message {
                      (SELECT 0) as num_replies
                  FROM
                      message as m
-                     LEFT JOIN {CHAT_MESSAGE_JOIN} as c ON m.ROWID = c.message_id
+                 LEFT JOIN {CHAT_MESSAGE_JOIN} as c ON m.ROWID = c.message_id
                  {filters}
                  ORDER BY
                      m.date;
@@ -707,7 +751,7 @@ impl Message {
     }
 
     /// See [`Tapback`] for details on this data.
-    fn clean_associated_guid(&self) -> Option<(usize, &str)> {
+    pub fn clean_associated_guid(&self) -> Option<(usize, &str)> {
         if let Some(guid) = &self.associated_message_guid {
             if guid.starts_with("p:") {
                 let mut split = guid.split('/');
@@ -750,7 +794,7 @@ impl Message {
                         (SELECT COUNT(*) FROM {MESSAGE} m2 WHERE m2.thread_originator_guid = m.guid) as num_replies
                     FROM 
                         message as m 
-                        LEFT JOIN {CHAT_MESSAGE_JOIN} as c ON m.ROWID = c.message_id
+                    LEFT JOIN {CHAT_MESSAGE_JOIN} as c ON m.ROWID = c.message_id
                     WHERE m.guid IN ({})
                     ORDER BY 
                         m.date;
@@ -792,7 +836,7 @@ impl Message {
                      (SELECT COUNT(*) FROM {MESSAGE} m2 WHERE m2.thread_originator_guid = m.guid) as num_replies
                  FROM 
                      message as m 
-                     LEFT JOIN {CHAT_MESSAGE_JOIN} as c ON m.ROWID = c.message_id 
+                 LEFT JOIN {CHAT_MESSAGE_JOIN} as c ON m.ROWID = c.message_id 
                  WHERE m.thread_originator_guid = \"{}\"
                  ORDER BY 
                      m.date;
@@ -823,7 +867,7 @@ impl Message {
     ///
     /// For example, a Bundle ID like `com.apple.messages.MSMessageExtensionBalloonPlugin:0000000000:com.apple.SafetyMonitorApp.SafetyMonitorMessages`
     /// should get parsed into `com.apple.SafetyMonitorApp.SafetyMonitorMessages`.
-    fn parse_balloon_bundle_id(&self) -> Option<&str> {
+    pub fn parse_balloon_bundle_id(&self) -> Option<&str> {
         if let Some(bundle_id) = &self.balloon_bundle_id {
             let mut parts = bundle_id.split(':');
             let bundle_id = parts.next();
@@ -855,6 +899,9 @@ impl Message {
                         "com.apple.messages.URLBalloonProvider" => Variant::App(CustomBalloon::URL),
                         "com.apple.Handwriting.HandwritingProvider" => {
                             Variant::App(CustomBalloon::Handwriting)
+                        }
+                        "com.apple.DigitalTouchBalloonProvider" => {
+                            Variant::App(CustomBalloon::DigitalTouch)
                         }
                         "com.apple.PassbookUIService.PeerPaymentMessagesExtension" => {
                             Variant::App(CustomBalloon::ApplePay)
@@ -936,12 +983,15 @@ impl Message {
 
     /// Determine the service the message was sent from, i.e. iMessage, SMS, IRC, etc.
     pub fn service(&self) -> Service {
-        match self.service.as_deref() {
-            Some("iMessage") => Service::iMessage,
-            Some("SMS") => Service::SMS,
-            Some(service_name) => Service::Other(service_name),
-            None => Service::Unknown,
+        if let Some(service_name) = self.service.as_deref() {
+            return match service_name.trim() {
+                "iMessage" => Service::iMessage,
+                "SMS" => Service::SMS,
+                "rcs" | "RCS" => Service::RCS,
+                service_name => Service::Other(service_name),
+            };
         }
+        Service::Unknown
     }
 
     /// Extract a blob of data that belongs to a single message from a given column
@@ -1053,18 +1103,8 @@ impl Message {
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::{
-        message_types::{
-            edited::{EditStatus, EditedMessage, EditedMessagePart},
-            expressives,
-            variants::{CustomBalloon, Variant},
-        },
-        tables::messages::Message,
-        util::dates::get_offset,
-    };
-
-    fn blank() -> Message {
+impl Message {
+    pub fn blank() -> Message {
         Message {
             rowid: i32::default(),
             guid: String::default(),
@@ -1099,299 +1139,5 @@ mod tests {
             components: None,
             edited_parts: None,
         }
-    }
-
-    #[test]
-    fn can_gen_message() {
-        blank();
-    }
-
-    #[test]
-    fn can_get_time_date_read_after_date() {
-        // Get offset
-        let offset = get_offset();
-
-        // Create message
-        let mut message = blank();
-        // May 17, 2022  8:29:42 PM
-        message.date = 674526582885055488;
-        // May 17, 2022  8:29:42 PM
-        message.date_delivered = 674526582885055488;
-        // May 17, 2022  9:30:31 PM
-        message.date_read = 674530231992568192;
-
-        assert_eq!(
-            message.time_until_read(&offset),
-            Some("1 hour, 49 seconds".to_string())
-        );
-    }
-
-    #[test]
-    fn can_get_time_date_read_before_date() {
-        // Get offset
-        let offset = get_offset();
-
-        // Create message
-        let mut message = blank();
-        // May 17, 2022  9:30:31 PM
-        message.date = 674530231992568192;
-        // May 17, 2022  9:30:31 PM
-        message.date_delivered = 674530231992568192;
-        // May 17, 2022  8:29:42 PM
-        message.date_read = 674526582885055488;
-
-        assert_eq!(message.time_until_read(&offset), None);
-    }
-
-    #[test]
-    fn can_get_message_expression_none() {
-        let m = blank();
-        assert_eq!(m.get_expressive(), expressives::Expressive::None);
-    }
-
-    #[test]
-    fn can_get_message_expression_bubble() {
-        let mut m = blank();
-        m.expressive_send_style_id = Some("com.apple.MobileSMS.expressivesend.gentle".to_string());
-        assert_eq!(
-            m.get_expressive(),
-            expressives::Expressive::Bubble(expressives::BubbleEffect::Gentle)
-        );
-    }
-
-    #[test]
-    fn can_get_message_expression_screen() {
-        let mut m = blank();
-        m.expressive_send_style_id =
-            Some("com.apple.messages.effect.CKHappyBirthdayEffect".to_string());
-        assert_eq!(
-            m.get_expressive(),
-            expressives::Expressive::Screen(expressives::ScreenEffect::Balloons)
-        );
-    }
-
-    #[test]
-    fn can_get_no_balloon_bundle_id() {
-        let m = blank();
-        assert_eq!(m.parse_balloon_bundle_id(), None);
-    }
-
-    #[test]
-    fn can_get_balloon_bundle_id_os() {
-        let mut m = blank();
-        m.balloon_bundle_id = Some("com.apple.Handwriting.HandwritingProvider".to_owned());
-        assert_eq!(
-            m.parse_balloon_bundle_id(),
-            Some("com.apple.Handwriting.HandwritingProvider")
-        );
-    }
-
-    #[test]
-    fn can_get_balloon_bundle_id_url() {
-        let mut m = blank();
-        m.balloon_bundle_id = Some("com.apple.messages.URLBalloonProvider".to_owned());
-        assert_eq!(
-            m.parse_balloon_bundle_id(),
-            Some("com.apple.messages.URLBalloonProvider")
-        );
-    }
-
-    #[test]
-    fn can_get_balloon_bundle_id_apple() {
-        let mut m = blank();
-        m.balloon_bundle_id = Some("com.apple.messages.MSMessageExtensionBalloonPlugin:0000000000:com.apple.PassbookUIService.PeerPaymentMessagesExtension".to_owned());
-        assert_eq!(
-            m.parse_balloon_bundle_id(),
-            Some("com.apple.PassbookUIService.PeerPaymentMessagesExtension")
-        );
-    }
-
-    #[test]
-    fn can_get_balloon_bundle_id_third_party() {
-        let mut m = blank();
-        m.balloon_bundle_id = Some("com.apple.messages.MSMessageExtensionBalloonPlugin:QPU8QS3E62:com.contextoptional.OpenTable.Messages".to_owned());
-        assert_eq!(
-            m.parse_balloon_bundle_id(),
-            Some("com.contextoptional.OpenTable.Messages")
-        );
-        assert!(matches!(
-            m.variant(),
-            Variant::App(CustomBalloon::Application(
-                "com.contextoptional.OpenTable.Messages"
-            ))
-        ));
-    }
-
-    #[test]
-    fn can_get_valid_guid() {
-        let mut m = blank();
-        m.associated_message_guid = Some("A44CE9D7-AAAA-BBBB-CCCC-23C54E1A9B6A".to_string());
-
-        assert_eq!(
-            Some((0usize, "A44CE9D7-AAAA-BBBB-CCCC-23C54E1A9B6A")),
-            m.clean_associated_guid()
-        );
-    }
-
-    #[test]
-    fn cant_get_invalid_guid() {
-        let mut m = blank();
-        m.associated_message_guid = Some("FAKE_GUID".to_string());
-
-        assert_eq!(None, m.clean_associated_guid());
-    }
-
-    #[test]
-    fn can_get_valid_guid_p() {
-        let mut m = blank();
-        m.associated_message_guid = Some("p:1/A44CE9D7-AAAA-BBBB-CCCC-23C54E1A9B6A".to_string());
-
-        assert_eq!(
-            Some((1usize, "A44CE9D7-AAAA-BBBB-CCCC-23C54E1A9B6A")),
-            m.clean_associated_guid()
-        );
-    }
-
-    #[test]
-    fn cant_get_invalid_guid_p() {
-        let mut m = blank();
-        m.associated_message_guid = Some("p:1/FAKE_GUID".to_string());
-
-        assert_eq!(None, m.clean_associated_guid());
-    }
-
-    #[test]
-    fn can_get_valid_guid_bp() {
-        let mut m = blank();
-        m.associated_message_guid = Some("bp:A44CE9D7-AAAA-BBBB-CCCC-23C54E1A9B6A".to_string());
-
-        assert_eq!(
-            Some((0usize, "A44CE9D7-AAAA-BBBB-CCCC-23C54E1A9B6A")),
-            m.clean_associated_guid()
-        );
-    }
-
-    #[test]
-    fn cant_get_invalid_guid_bp() {
-        let mut m = blank();
-        m.associated_message_guid = Some("bp:FAKE_GUID".to_string());
-
-        assert_eq!(None, m.clean_associated_guid());
-    }
-
-    #[test]
-    fn can_get_fully_unsent_true_single() {
-        let mut m = blank();
-        m.edited_parts = Some(EditedMessage {
-            parts: vec![EditedMessagePart {
-                status: EditStatus::Unsent,
-                edit_history: vec![],
-            }],
-        });
-
-        assert!(m.is_fully_unsent());
-    }
-
-    #[test]
-    fn can_get_fully_unsent_true_multiple() {
-        let mut m = blank();
-        m.edited_parts = Some(EditedMessage {
-            parts: vec![
-                EditedMessagePart {
-                    status: EditStatus::Unsent,
-                    edit_history: vec![],
-                },
-                EditedMessagePart {
-                    status: EditStatus::Unsent,
-                    edit_history: vec![],
-                },
-            ],
-        });
-
-        assert!(m.is_fully_unsent());
-    }
-
-    #[test]
-    fn can_get_fully_unsent_false() {
-        let mut m = blank();
-        m.edited_parts = Some(EditedMessage {
-            parts: vec![EditedMessagePart {
-                status: EditStatus::Original,
-                edit_history: vec![],
-            }],
-        });
-
-        assert!(!m.is_fully_unsent());
-    }
-
-    #[test]
-    fn can_get_fully_unsent_false_multiple() {
-        let mut m = blank();
-        m.edited_parts = Some(EditedMessage {
-            parts: vec![
-                EditedMessagePart {
-                    status: EditStatus::Unsent,
-                    edit_history: vec![],
-                },
-                EditedMessagePart {
-                    status: EditStatus::Original,
-                    edit_history: vec![],
-                },
-            ],
-        });
-
-        assert!(!m.is_fully_unsent());
-    }
-
-    #[test]
-    fn can_get_part_edited_true() {
-        let mut m = blank();
-        m.edited_parts = Some(EditedMessage {
-            parts: vec![
-                EditedMessagePart {
-                    status: EditStatus::Edited,
-                    edit_history: vec![],
-                },
-                EditedMessagePart {
-                    status: EditStatus::Original,
-                    edit_history: vec![],
-                },
-            ],
-        });
-
-        assert!(m.is_part_edited(0));
-    }
-
-    #[test]
-    fn can_get_part_edited_false() {
-        let mut m = blank();
-        m.edited_parts = Some(EditedMessage {
-            parts: vec![
-                EditedMessagePart {
-                    status: EditStatus::Edited,
-                    edit_history: vec![],
-                },
-                EditedMessagePart {
-                    status: EditStatus::Original,
-                    edit_history: vec![],
-                },
-            ],
-        });
-
-        assert!(!m.is_part_edited(1));
-    }
-
-    #[test]
-    fn can_get_part_edited_blank() {
-        let m = blank();
-
-        assert!(!m.is_part_edited(0));
-    }
-
-    #[test]
-    fn can_get_fully_unsent_none() {
-        let m = blank();
-
-        assert!(!m.is_fully_unsent());
     }
 }

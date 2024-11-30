@@ -36,6 +36,10 @@ a[href^="#"] {
 	background-color: #65c466
 }
 
+.message .sent.rcs {
+	background-color: #65c466
+}
+
 .message .sent {
 	color: white;
 	border-radius: 25px;
@@ -242,6 +246,10 @@ span.sender {
 
 span.deleted {
 	opacity: 60%;
+}
+
+span.transcription {
+	opacity: 75%;
 }
 
 span.subject {
