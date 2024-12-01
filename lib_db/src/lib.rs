@@ -1,9 +1,10 @@
-mod databases;
+pub mod databases;
 mod types;
 
 use std::sync::Arc;
 
 use databases::surreal::SurrealDatabase;
+use databases::http::HttpDatabase;
 use tokio::runtime::Runtime;
 pub use types::Message;
 
@@ -20,7 +21,7 @@ pub const FALLBACK_DB_ENDPOINT: &str = "ws://localhost:8000";
 #[derive(Debug, Clone)]
 pub enum DatabaseType {
     Surreal,
-    // Add other database types here
+    Http,
 }
 
 // Public database interface
@@ -43,19 +44,19 @@ impl dyn Database {
     pub fn new(
         db_type: DatabaseType
     ) -> Result<Box<dyn Database + Send + Sync>, Box<dyn std::error::Error + Send + Sync>> {
-        // Create the runtime once at the top level
         let runtime = Arc::new(Runtime::new()?);
-
         let connection = DatabaseConnection {
             runtime: runtime.clone(),
-            db_type,
+            db_type: db_type.clone(),
         };
 
         match db_type {
             DatabaseType::Surreal => {
-                // Use the shared runtime instead of creating a new one
                 let db = runtime.block_on(async { SurrealDatabase::create(connection).await })?;
-
+                Ok(Box::new(db) as Box<dyn Database + Send + Sync>)
+            }
+            DatabaseType::Http => {
+                let db = runtime.block_on(async { HttpDatabase::create(connection).await })?;
                 Ok(Box::new(db) as Box<dyn Database + Send + Sync>)
             }
         }

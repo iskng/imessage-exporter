@@ -60,9 +60,18 @@ pub struct DB<'a> {
 
 impl<'a> Exporter<'a> for DB<'a> {
     fn new(config: &'a Config) -> Result<Self, RuntimeError> {
-        let database = <dyn Database>
-            ::new(DatabaseType::Surreal)
-            .map_err(|e| RuntimeError::ExportError(e))?;
+        // Determine database type based on DBPATH
+        let db_type = if let Ok(path) = std::env::var("DBPATH") {
+            if path.starts_with("http://") || path.starts_with("https://") {
+                DatabaseType::Http
+            } else {
+                DatabaseType::Surreal
+            }
+        } else {
+            DatabaseType::Surreal
+        };
+
+        let database = <dyn Database>::new(db_type).map_err(|e| RuntimeError::ExportError(e))?;
 
         Ok(DB {
             config,
@@ -263,7 +272,7 @@ impl<'a> DB<'a> {
         if let Some(db) = &self.database {
             let messages = std::mem::take(&mut self.messages);
             db.insert_batch(messages).map_err(|e| RuntimeError::ExportError(e))?;
-            // db.flush().map_err(|e| RuntimeError::ExportError(e))?;
+            db.flush().map_err(|e| RuntimeError::ExportError(e))?;
         }
         Ok(())
     }

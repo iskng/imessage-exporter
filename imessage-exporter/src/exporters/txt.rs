@@ -1,48 +1,44 @@
 use std::{
     borrow::Cow,
-    collections::{
-        hash_map::Entry::{Occupied, Vacant},
-        HashMap,
-    },
+    collections::{ hash_map::Entry::{ Occupied, Vacant }, HashMap },
     fs::File,
-    io::{BufWriter, Write},
+    io::{ BufWriter, Write },
     path::PathBuf,
 };
 
 use crate::{
     app::{
-        compatibility::attachment_manager::AttachmentManagerMode, error::RuntimeError,
-        progress::build_progress_bar_export, runtime::Config,
+        compatibility::attachment_manager::AttachmentManagerMode,
+        error::RuntimeError,
+        progress::build_progress_bar_export,
+        runtime::Config,
     },
-    exporters::exporter::{BalloonFormatter, Exporter, Writer},
+    exporters::exporter::{ BalloonFormatter, Exporter, Writer },
 };
 
 use imessage_database::{
-    error::{plist::PlistParseError, table::TableError},
+    error::{ plist::PlistParseError, table::TableError },
     message_types::{
         app::AppMessage,
         app_store::AppStoreMessage,
         collaboration::CollaborationMessage,
-        digital_touch::{self, DigitalTouch},
-        edited::{EditStatus, EditedMessage},
-        expressives::{BubbleEffect, Expressive, ScreenEffect},
+        digital_touch::{ self, DigitalTouch },
+        edited::{ EditStatus, EditedMessage },
+        expressives::{ BubbleEffect, Expressive, ScreenEffect },
         handwriting::HandwrittenMessage,
         music::MusicMessage,
         placemark::PlacemarkMessage,
         text_effects::TextEffect,
         url::URLMessage,
-        variants::{Announcement, BalloonProvider, CustomBalloon, URLOverride, Variant},
+        variants::{ Announcement, BalloonProvider, CustomBalloon, URLOverride, Variant },
     },
     tables::{
         attachment::Attachment,
-        messages::{
-            models::{AttachmentMeta, BubbleComponent},
-            Message,
-        },
-        table::{Table, FITNESS_RECEIVER, ME, ORPHANED, YOU},
+        messages::{ models::{ AttachmentMeta, BubbleComponent }, Message },
+        table::{ Table, FITNESS_RECEIVER, ME, ORPHANED, YOU },
     },
     util::{
-        dates::{format, get_local_time, readable_diff, TIMESTAMP_FACTOR},
+        dates::{ format, get_local_time, readable_diff, TIMESTAMP_FACTOR },
         plist::parse_plist,
     },
 };
@@ -78,24 +74,23 @@ impl<'a> Exporter<'a> for TXT<'a> {
 
     fn iter_messages(&mut self) -> Result<(), RuntimeError> {
         // Tell the user what we are doing
-        eprintln!(
-            "Exporting to {} as txt...",
-            self.config.options.export_path.display()
-        );
+        eprintln!("Exporting to {} as txt...", self.config.options.export_path.display());
 
         // Keep track of current message ROWID
         let mut current_message_row = -1;
 
         // Set up progress bar
         let mut current_message = 0;
-        let total_messages =
-            Message::get_count(&self.config.db, &self.config.options.query_context)
-                .map_err(RuntimeError::DatabaseError)?;
+        let total_messages = Message::get_count(
+            &self.config.db,
+            &self.config.options.query_context
+        ).map_err(RuntimeError::DatabaseError)?;
         let pb = build_progress_bar_export(total_messages);
 
-        let mut statement =
-            Message::stream_rows(&self.config.db, &self.config.options.query_context)
-                .map_err(RuntimeError::DatabaseError)?;
+        let mut statement = Message::stream_rows(
+            &self.config.db,
+            &self.config.options.query_context
+        ).map_err(RuntimeError::DatabaseError)?;
 
         let messages = statement
             .query_map([], |row| Ok(Message::from_row(row)))
@@ -119,12 +114,11 @@ impl<'a> Exporter<'a> for TXT<'a> {
             if msg.is_announcement() {
                 let announcement = self.format_announcement(&msg);
                 TXT::write_to_file(self.get_or_create_file(&msg)?, &announcement)?;
-            }
-            // Message replies and tapbacks are rendered in context, so no need to render them separately
-            else if !msg.is_tapback() {
-                let message = self
-                    .format_message(&msg, 0)
-                    .map_err(RuntimeError::DatabaseError)?;
+            } else if
+                // Message replies and tapbacks are rendered in context, so no need to render them separately
+                !msg.is_tapback()
+            {
+                let message = self.format_message(&msg, 0).map_err(RuntimeError::DatabaseError)?;
                 TXT::write_to_file(self.get_or_create_file(&msg)?, &message)?;
             }
             current_message += 1;
@@ -139,7 +133,7 @@ impl<'a> Exporter<'a> for TXT<'a> {
     /// Create a file for the given chat, caching it so we don't need to build it later
     fn get_or_create_file(
         &mut self,
-        message: &Message,
+        message: &Message
     ) -> Result<&mut BufWriter<File>, RuntimeError> {
         match self.config.conversation(message) {
             Some((chatroom, _)) => {
@@ -181,9 +175,9 @@ impl<'a> Writer<'a> for TXT<'a> {
             self.config.who(
                 message.handle_id,
                 message.is_from_me(),
-                &message.destination_caller_id,
+                &message.destination_caller_id
             ),
-            &indent,
+            &indent
         );
 
         // If message was deleted, annotate it
@@ -191,7 +185,7 @@ impl<'a> Writer<'a> for TXT<'a> {
             self.add_line(
                 &mut formatted_message,
                 "This message was deleted from the conversation!",
-                &indent,
+                &indent
             );
         }
 
@@ -215,11 +209,7 @@ impl<'a> Writer<'a> for TXT<'a> {
 
         // Handle Shared Location
         if message.started_sharing_location() || message.stopped_sharing_location() {
-            self.add_line(
-                &mut formatted_message,
-                self.format_shared_location(message),
-                &indent,
-            );
+            self.add_line(&mut formatted_message, self.format_shared_location(message), &indent);
         }
 
         // Generate the message body from it's components
@@ -231,8 +221,13 @@ impl<'a> Writer<'a> for TXT<'a> {
                         // Render edited message content, if applicable
                         if message.is_part_edited(idx) {
                             if let Some(edited_parts) = &message.edited_parts {
-                                if let Some(edited) =
-                                    self.format_edited(message, edited_parts, idx, &indent)
+                                if
+                                    let Some(edited) = self.format_edited(
+                                        message,
+                                        edited_parts,
+                                        idx,
+                                        &indent
+                                    )
                                 {
                                     self.add_line(&mut formatted_message, &edited, &indent);
                                 };
@@ -241,12 +236,14 @@ impl<'a> Writer<'a> for TXT<'a> {
                             let mut formatted_text = String::with_capacity(text.len());
 
                             for text_attr in text_attrs {
-                                if let Some(message_content) =
-                                    text.get(text_attr.start..text_attr.end)
+                                if
+                                    let Some(message_content) = text.get(
+                                        text_attr.start..text_attr.end
+                                    )
                                 {
                                     formatted_text.push_str(
-                                        &self.format_attributed(message_content, &text_attr.effect),
-                                    )
+                                        &self.format_attributed(message_content, &text_attr.effect)
+                                    );
                                 }
                             }
 
@@ -259,7 +256,7 @@ impl<'a> Writer<'a> for TXT<'a> {
                                 self.add_line(
                                     &mut formatted_message,
                                     &formatted_text.replace(FITNESS_RECEIVER, YOU),
-                                    &indent,
+                                    &indent
                                 );
                             } else {
                                 self.add_line(&mut formatted_message, &formatted_text, &indent);
@@ -287,56 +284,59 @@ impl<'a> Writer<'a> for TXT<'a> {
                         }
                         // Attachment does not exist in attachments table
                         None => {
-                            self.add_line(&mut formatted_message, "Attachment missing!", &indent)
+                            self.add_line(&mut formatted_message, "Attachment missing!", &indent);
                         }
                     }
                 }
-                BubbleComponent::App => match self.format_app(message, &mut attachments, &indent) {
-                    // We use an empty indent here because `format_app` handles building the entire message
-                    Ok(ok_bubble) => self.add_line(&mut formatted_message, &ok_bubble, &indent),
-                    Err(why) => self.add_line(
-                        &mut formatted_message,
-                        &format!("Unable to format app message: {why}"),
-                        &indent,
-                    ),
-                },
+                BubbleComponent::App =>
+                    match self.format_app(message, &mut attachments, &indent) {
+                        // We use an empty indent here because `format_app` handles building the entire message
+                        Ok(ok_bubble) => self.add_line(&mut formatted_message, &ok_bubble, &indent),
+                        Err(why) =>
+                            self.add_line(
+                                &mut formatted_message,
+                                &format!("Unable to format app message: {why}"),
+                                &indent
+                            ),
+                    }
                 BubbleComponent::Retracted => {
                     if let Some(edited_parts) = &message.edited_parts {
-                        if let Some(edited) =
-                            self.format_edited(message, edited_parts, idx, &indent)
+                        if
+                            let Some(edited) = self.format_edited(
+                                message,
+                                edited_parts,
+                                idx,
+                                &indent
+                            )
                         {
                             self.add_line(&mut formatted_message, &edited, &indent);
                         };
                     }
                 }
-            };
+            }
 
             // Handle expressives
             if message.expressive_send_style_id.is_some() {
-                self.add_line(
-                    &mut formatted_message,
-                    self.format_expressive(message),
-                    &indent,
-                );
+                self.add_line(&mut formatted_message, self.format_expressive(message), &indent);
             }
 
             // Handle Tapbacks
             if let Some(tapbacks_map) = self.config.tapbacks.get(&message.guid) {
                 if let Some(tapbacks) = tapbacks_map.get(&idx) {
                     let mut formatted_tapbacks = String::new();
-                    tapbacks
-                        .iter()
-                        .try_for_each(|tapbacks| -> Result<(), TableError> {
+                    tapbacks.iter().try_for_each(
+                        |tapbacks| -> Result<(), TableError> {
                             let formatted = self.format_tapback(tapbacks)?;
                             if !formatted.is_empty() {
                                 self.add_line(
                                     &mut formatted_tapbacks,
                                     &self.format_tapback(tapbacks)?,
-                                    &indent,
+                                    &indent
                                 );
                             }
                             Ok(())
-                        })?;
+                        }
+                    )?;
 
                     if !formatted_tapbacks.is_empty() {
                         self.add_line(&mut formatted_message, "Tapbacks:", &indent);
@@ -347,19 +347,19 @@ impl<'a> Writer<'a> for TXT<'a> {
 
             // Handle Replies
             if let Some(replies) = replies.get_mut(&idx) {
-                replies
-                    .iter_mut()
-                    .try_for_each(|reply| -> Result<(), TableError> {
+                replies.iter_mut().try_for_each(
+                    |reply| -> Result<(), TableError> {
                         let _ = reply.generate_text(&self.config.db);
                         if !reply.is_tapback() {
                             self.add_line(
                                 &mut formatted_message,
                                 &self.format_message(reply, 4)?,
-                                &indent,
+                                &indent
                             );
                         }
                         Ok(())
-                    })?;
+                    }
+                )?;
             }
         }
 
@@ -368,7 +368,7 @@ impl<'a> Writer<'a> for TXT<'a> {
             self.add_line(
                 &mut formatted_message,
                 "This message responded to an earlier message.",
-                &indent,
+                &indent
             );
         }
 
@@ -384,21 +384,21 @@ impl<'a> Writer<'a> for TXT<'a> {
         &self,
         attachment: &'a mut Attachment,
         message: &Message,
-        metadata: &AttachmentMeta,
+        metadata: &AttachmentMeta
     ) -> Result<String, &'a str> {
         // Copy the file, if requested
-        self.config
-            .options
-            .attachment_manager
+        self.config.options.attachment_manager
             .handle_attachment(message, attachment, self.config)
             .ok_or(attachment.filename())?;
 
         // Append the transcription if one is provided
         if let Some(transcription) = metadata.transcription {
-            return Ok(format!(
-                "{}\nTranscription: {transcription}",
-                self.config.message_attachment_path(attachment)
-            ));
+            return Ok(
+                format!(
+                    "{}\nTranscription: {transcription}",
+                    self.config.message_attachment_path(attachment)
+                )
+            );
         }
 
         // Build a relative filepath from the fully qualified one on the `Attachment`
@@ -409,7 +409,7 @@ impl<'a> Writer<'a> for TXT<'a> {
         let who = self.config.who(
             message.handle_id,
             message.is_from_me(),
-            &message.destination_caller_id,
+            &message.destination_caller_id
         );
         match self.format_attachment(sticker, message, &AttachmentMeta::default()) {
             Ok(path_to_sticker) => {
@@ -419,7 +419,7 @@ impl<'a> Writer<'a> for TXT<'a> {
                 let sticker_effect = sticker.get_sticker_effect(
                     &self.config.options.platform,
                     &self.config.options.db_path,
-                    self.config.options.attachment_root.as_deref(),
+                    self.config.options.attachment_root.as_deref()
                 );
                 if let Ok(Some(sticker_effect)) = sticker_effect {
                     out_s = format!("{sticker_effect} {out_s}");
@@ -440,7 +440,7 @@ impl<'a> Writer<'a> for TXT<'a> {
         &self,
         message: &'a Message,
         attachments: &mut Vec<Attachment>,
-        indent: &str,
+        indent: &str
     ) -> Result<String, PlistParseError> {
         if let Variant::App(balloon) = message.variant() {
             let mut app_bubble = String::new();
@@ -480,25 +480,28 @@ impl<'a> Writer<'a> for TXT<'a> {
                             self.format_placemark(&balloon, indent)
                         }
                     }
-                // Handwriting uses a different payload type than the rest of the branches
+                    // Handwriting uses a different payload type than the rest of the branches
                 } else {
                     // Handle the app case
                     let parsed = parse_plist(&payload)?;
                     match AppMessage::from_map(&parsed) {
-                        Ok(bubble) => match balloon {
-                            CustomBalloon::Application(bundle_id) => {
-                                self.format_generic_app(&bubble, bundle_id, attachments, indent)
+                        Ok(bubble) =>
+                            match balloon {
+                                CustomBalloon::Application(bundle_id) => {
+                                    self.format_generic_app(&bubble, bundle_id, attachments, indent)
+                                }
+                                CustomBalloon::ApplePay => self.format_apple_pay(&bubble, indent),
+                                CustomBalloon::Fitness => self.format_fitness(&bubble, indent),
+                                CustomBalloon::Slideshow => self.format_slideshow(&bubble, indent),
+                                CustomBalloon::CheckIn => self.format_check_in(&bubble, indent),
+                                CustomBalloon::FindMy => self.format_find_my(&bubble, indent),
+                                CustomBalloon::Handwriting => unreachable!(),
+                                CustomBalloon::DigitalTouch => unreachable!(),
+                                CustomBalloon::URL => unreachable!(),
                             }
-                            CustomBalloon::ApplePay => self.format_apple_pay(&bubble, indent),
-                            CustomBalloon::Fitness => self.format_fitness(&bubble, indent),
-                            CustomBalloon::Slideshow => self.format_slideshow(&bubble, indent),
-                            CustomBalloon::CheckIn => self.format_check_in(&bubble, indent),
-                            CustomBalloon::FindMy => self.format_find_my(&bubble, indent),
-                            CustomBalloon::Handwriting => unreachable!(),
-                            CustomBalloon::DigitalTouch => unreachable!(),
-                            CustomBalloon::URL => unreachable!(),
-                        },
-                        Err(why) => return Err(why),
+                        Err(why) => {
+                            return Err(why);
+                        }
                     }
                 };
                 app_bubble.push_str(&res);
@@ -510,7 +513,7 @@ impl<'a> Writer<'a> for TXT<'a> {
                     }
                 }
                 return Err(PlistParseError::NoPayload);
-            };
+            }
             Ok(app_bubble)
         } else {
             Err(PlistParseError::WrongMessageType)
@@ -523,24 +526,29 @@ impl<'a> Writer<'a> for TXT<'a> {
                 if !added {
                     return Ok(String::new());
                 }
-                Ok(format!(
-                    "{} by {}",
-                    tapback,
-                    self.config
-                        .who(msg.handle_id, msg.is_from_me(), &msg.destination_caller_id),
-                ))
+                Ok(
+                    format!(
+                        "{} by {}",
+                        tapback,
+                        self.config.who(msg.handle_id, msg.is_from_me(), &msg.destination_caller_id)
+                    )
+                )
             }
             Variant::Sticker(_) => {
                 let mut paths = Attachment::from_message(&self.config.db, msg)?;
-                let who =
-                    self.config
-                        .who(msg.handle_id, msg.is_from_me(), &msg.destination_caller_id);
+                let who = self.config.who(
+                    msg.handle_id,
+                    msg.is_from_me(),
+                    &msg.destination_caller_id
+                );
                 // Sticker messages have only one attachment, the sticker image
-                Ok(if let Some(sticker) = paths.get_mut(0) {
-                    format!("{} from {who}", self.format_sticker(sticker, msg))
-                } else {
-                    format!("Sticker from {who} not found!")
-                })
+                Ok(
+                    if let Some(sticker) = paths.get_mut(0) {
+                        format!("{} from {who}", self.format_sticker(sticker, msg))
+                    } else {
+                        format!("Sticker from {who} not found!")
+                    }
+                )
             }
             _ => unreachable!(),
         }
@@ -548,32 +556,32 @@ impl<'a> Writer<'a> for TXT<'a> {
 
     fn format_expressive(&self, msg: &'a Message) -> &'a str {
         match msg.get_expressive() {
-            Expressive::Screen(effect) => match effect {
-                ScreenEffect::Confetti => "Sent with Confetti",
-                ScreenEffect::Echo => "Sent with Echo",
-                ScreenEffect::Fireworks => "Sent with Fireworks",
-                ScreenEffect::Balloons => "Sent with Balloons",
-                ScreenEffect::Heart => "Sent with Heart",
-                ScreenEffect::Lasers => "Sent with Lasers",
-                ScreenEffect::ShootingStar => "Sent with Shooting Star",
-                ScreenEffect::Sparkles => "Sent with Sparkles",
-                ScreenEffect::Spotlight => "Sent with Spotlight",
-            },
-            Expressive::Bubble(effect) => match effect {
-                BubbleEffect::Slam => "Sent with Slam",
-                BubbleEffect::Loud => "Sent with Loud",
-                BubbleEffect::Gentle => "Sent with Gentle",
-                BubbleEffect::InvisibleInk => "Sent with Invisible Ink",
-            },
+            Expressive::Screen(effect) =>
+                match effect {
+                    ScreenEffect::Confetti => "Sent with Confetti",
+                    ScreenEffect::Echo => "Sent with Echo",
+                    ScreenEffect::Fireworks => "Sent with Fireworks",
+                    ScreenEffect::Balloons => "Sent with Balloons",
+                    ScreenEffect::Heart => "Sent with Heart",
+                    ScreenEffect::Lasers => "Sent with Lasers",
+                    ScreenEffect::ShootingStar => "Sent with Shooting Star",
+                    ScreenEffect::Sparkles => "Sent with Sparkles",
+                    ScreenEffect::Spotlight => "Sent with Spotlight",
+                }
+            Expressive::Bubble(effect) =>
+                match effect {
+                    BubbleEffect::Slam => "Sent with Slam",
+                    BubbleEffect::Loud => "Sent with Loud",
+                    BubbleEffect::Gentle => "Sent with Gentle",
+                    BubbleEffect::InvisibleInk => "Sent with Invisible Ink",
+                }
             Expressive::Unknown(effect) => effect,
             Expressive::None => "",
         }
     }
 
     fn format_announcement(&self, msg: &'a Message) -> String {
-        let mut who = self
-            .config
-            .who(msg.handle_id, msg.is_from_me(), &msg.destination_caller_id);
+        let mut who = self.config.who(msg.handle_id, msg.is_from_me(), &msg.destination_caller_id);
         // Rename yourself so we render the proper grammar here
         if who == ME {
             who = self.config.options.custom_name.as_deref().unwrap_or(YOU);
@@ -582,18 +590,19 @@ impl<'a> Writer<'a> for TXT<'a> {
         let timestamp = format(&msg.date(&self.config.offset));
 
         return match msg.get_announcement() {
-            Some(announcement) => match announcement {
-                Announcement::NameChange(name) => {
-                    format!("{timestamp} {who} renamed the conversation to {name}\n\n")
+            Some(announcement) =>
+                match announcement {
+                    Announcement::NameChange(name) => {
+                        format!("{timestamp} {who} renamed the conversation to {name}\n\n")
+                    }
+                    Announcement::PhotoChange => {
+                        format!("{timestamp} {who} changed the group photo.\n\n")
+                    }
+                    Announcement::Unknown(num) => {
+                        format!("{timestamp} {who} performed unknown action {num}.\n\n")
+                    }
+                    Announcement::FullyUnsent => format!("{timestamp} {who} unsent a message!\n\n"),
                 }
-                Announcement::PhotoChange => {
-                    format!("{timestamp} {who} changed the group photo.\n\n")
-                }
-                Announcement::Unknown(num) => {
-                    format!("{timestamp} {who} performed unknown action {num}.\n\n")
-                }
-                Announcement::FullyUnsent => format!("{timestamp} {who} unsent a message!\n\n"),
-            },
             None => String::from("Unable to format announcement!\n\n"),
         };
     }
@@ -617,7 +626,7 @@ impl<'a> Writer<'a> for TXT<'a> {
         msg: &'a Message,
         edited_message: &'a EditedMessage,
         message_part_idx: usize,
-        indent: &str,
+        indent: &str
     ) -> Option<String> {
         if let Some(edited_message_part) = edited_message.part(message_part_idx) {
             let mut out_s = String::new();
@@ -629,8 +638,9 @@ impl<'a> Writer<'a> for TXT<'a> {
                         match previous_timestamp {
                             // Original message get an absolute timestamp
                             None => {
-                                let parsed_timestamp =
-                                    format(&get_local_time(&event.date, &self.config.offset));
+                                let parsed_timestamp = format(
+                                    &get_local_time(&event.date, &self.config.offset)
+                                );
                                 out_s.push_str(&parsed_timestamp);
                                 out_s.push(' ');
                             }
@@ -645,7 +655,7 @@ impl<'a> Writer<'a> for TXT<'a> {
                                     out_s.push_str(" later: ");
                                 }
                             }
-                        };
+                        }
 
                         // Update the previous timestamp for the next loop
                         previous_timestamp = Some(&event.date);
@@ -661,10 +671,12 @@ impl<'a> Writer<'a> for TXT<'a> {
                         "They"
                     };
 
-                    match readable_diff(
-                        msg.date(&self.config.offset),
-                        msg.date_edited(&self.config.offset),
-                    ) {
+                    match
+                        readable_diff(
+                            msg.date(&self.config.offset),
+                            msg.date_edited(&self.config.offset)
+                        )
+                    {
                         Some(diff) => {
                             out_s.push_str(who);
                             out_s.push_str(" unsent this message part ");
@@ -693,8 +705,7 @@ impl<'a> Writer<'a> for TXT<'a> {
     }
 
     fn write_to_file(file: &mut BufWriter<File>, text: &str) -> Result<(), RuntimeError> {
-        file.write_all(text.as_bytes())
-            .map_err(RuntimeError::DiskError)
+        file.write_all(text.as_bytes()).map_err(RuntimeError::DiskError)
     }
 }
 
@@ -853,28 +864,23 @@ impl<'a> BalloonFormatter<&'a str> for TXT<'a> {
         &self,
         msg: &Message,
         balloon: &HandwrittenMessage,
-        indent: &str,
+        indent: &str
     ) -> String {
         match self.config.options.attachment_manager.mode {
-            AttachmentManagerMode::Disabled => balloon
-                .render_ascii(40)
-                .replace("\n", &format!("{indent}\n")),
-            _ => self
-                .config
-                .options
-                .attachment_manager
-                .handle_handwriting(msg, balloon, self.config)
-                .map(|filepath| {
-                    self.config
-                        .relative_path(PathBuf::from(&filepath))
-                        .unwrap_or(filepath.display().to_string())
-                })
-                .map(|filepath| format!("{indent}{filepath}"))
-                .unwrap_or_else(|| {
-                    balloon
-                        .render_ascii(40)
-                        .replace("\n", &format!("{indent}\n"))
-                }),
+            AttachmentManagerMode::Disabled =>
+                balloon.render_ascii(40).replace("\n", &format!("{indent}\n")),
+            _ =>
+                self.config.options.attachment_manager
+                    .handle_handwriting(msg, balloon, self.config)
+                    .map(|filepath| {
+                        self.config
+                            .relative_path(PathBuf::from(&filepath))
+                            .unwrap_or(filepath.display().to_string())
+                    })
+                    .map(|filepath| format!("{indent}{filepath}"))
+                    .unwrap_or_else(|| {
+                        balloon.render_ascii(40).replace("\n", &format!("{indent}\n"))
+                    }),
         }
     }
 
@@ -952,27 +958,29 @@ impl<'a> BalloonFormatter<&'a str> for TXT<'a> {
         // Before manual check-in
         if let Some(date_str) = metadata.get("estimatedEndTime") {
             // Parse the estimated end time from the message's query string
-            let date_stamp = date_str.parse::<f64>().unwrap_or(0.) as i64 * TIMESTAMP_FACTOR;
+            let date_stamp = (date_str.parse::<f64>().unwrap_or(0.0) as i64) * TIMESTAMP_FACTOR;
             let date_time = get_local_time(&date_stamp, &0);
             let date_string = format(&date_time);
 
             out_s.push_str("\nExpected at ");
             out_s.push_str(&date_string);
-        }
-        // Expired check-in
-        else if let Some(date_str) = metadata.get("triggerTime") {
+        } else if
+            // Expired check-in
+            let Some(date_str) = metadata.get("triggerTime")
+        {
             // Parse the estimated end time from the message's query string
-            let date_stamp = date_str.parse::<f64>().unwrap_or(0.) as i64 * TIMESTAMP_FACTOR;
+            let date_stamp = (date_str.parse::<f64>().unwrap_or(0.0) as i64) * TIMESTAMP_FACTOR;
             let date_time = get_local_time(&date_stamp, &0);
             let date_string = format(&date_time);
 
             out_s.push_str("\nWas expected at ");
             out_s.push_str(&date_string);
-        }
-        // Accepted check-in
-        else if let Some(date_str) = metadata.get("sendDate") {
+        } else if
+            // Accepted check-in
+            let Some(date_str) = metadata.get("sendDate")
+        {
             // Parse the estimated end time from the message's query string
-            let date_stamp = date_str.parse::<f64>().unwrap_or(0.) as i64 * TIMESTAMP_FACTOR;
+            let date_stamp = (date_str.parse::<f64>().unwrap_or(0.0) as i64) * TIMESTAMP_FACTOR;
             let date_time = get_local_time(&date_stamp, &0);
             let date_string = format(&date_time);
 
@@ -988,7 +996,7 @@ impl<'a> BalloonFormatter<&'a str> for TXT<'a> {
         balloon: &AppMessage,
         bundle_id: &str,
         _: &mut Vec<Attachment>,
-        indent: &str,
+        indent: &str
     ) -> String {
         let mut out_s = String::from(indent);
 
@@ -1059,16 +1067,18 @@ impl<'a> TXT<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        env::{current_dir, set_var},
-        path::PathBuf,
-    };
+    use std::{ env::{ current_dir, set_var }, path::PathBuf };
 
     use crate::{
-        app::export_type::ExportType, exporters::exporter::Writer, Config, Exporter, Options, TXT,
+        app::export_type::ExportType,
+        exporters::exporter::Writer,
+        Config,
+        Exporter,
+        Options,
+        TXT,
     };
     use imessage_database::{
-        tables::{messages::models::AttachmentMeta, table::ME},
+        tables::{ messages::models::AttachmentMeta, table::ME },
         util::platform::Platform,
     };
 
@@ -1234,9 +1244,7 @@ mod tests {
         // Create exporter
         let options = Options::fake_options(ExportType::Txt);
         let mut config = Config::fake_app(options);
-        config
-            .participants
-            .insert(999999, "Sample Contact".to_string());
+        config.participants.insert(999999, "Sample Contact".to_string());
         let exporter = TXT::new(&config).unwrap();
 
         let mut message = Config::fake_message();
@@ -1259,9 +1267,7 @@ mod tests {
         // Create exporter
         let options = Options::fake_options(ExportType::Txt);
         let mut config = Config::fake_app(options);
-        config
-            .participants
-            .insert(999999, "Sample Contact".to_string());
+        config.participants.insert(999999, "Sample Contact".to_string());
         let exporter = TXT::new(&config).unwrap();
 
         let mut message = Config::fake_message();
@@ -1290,9 +1296,7 @@ mod tests {
         let mut options = Options::fake_options(ExportType::Txt);
         options.custom_name = Some("Name".to_string());
         let mut config = Config::fake_app(options);
-        config
-            .participants
-            .insert(999999, "Sample Contact".to_string());
+        config.participants.insert(999999, "Sample Contact".to_string());
         let exporter = TXT::new(&config).unwrap();
 
         let mut message = Config::fake_message();
@@ -1415,9 +1419,7 @@ mod tests {
         // Create exporter
         let options = Options::fake_options(ExportType::Txt);
         let mut config = Config::fake_app(options);
-        config
-            .participants
-            .insert(999999, "Sample Contact".to_string());
+        config.participants.insert(999999, "Sample Contact".to_string());
         let exporter = TXT::new(&config).unwrap();
 
         let mut message = Config::fake_message();
@@ -1441,9 +1443,7 @@ mod tests {
         // Create exporter
         let options = Options::fake_options(ExportType::Txt);
         let mut config = Config::fake_app(options);
-        config
-            .participants
-            .insert(999999, "Sample Contact".to_string());
+        config.participants.insert(999999, "Sample Contact".to_string());
         let exporter = TXT::new(&config).unwrap();
 
         let mut message = Config::fake_message();
@@ -1468,9 +1468,7 @@ mod tests {
         // Create exporter
         let options = Options::fake_options(ExportType::Txt);
         let mut config = Config::fake_app(options);
-        config
-            .participants
-            .insert(999999, "Sample Contact".to_string());
+        config.participants.insert(999999, "Sample Contact".to_string());
         let exporter = TXT::new(&config).unwrap();
 
         let mut message = Config::fake_message();
@@ -1611,8 +1609,11 @@ mod tests {
         let mut attachment = Config::fake_attachment();
         attachment.filename = None;
 
-        let actual =
-            exporter.format_attachment(&mut attachment, &message, &AttachmentMeta::default());
+        let actual = exporter.format_attachment(
+            &mut attachment,
+            &message,
+            &AttachmentMeta::default()
+        );
 
         assert_eq!(actual, Err("d.jpg"));
     }
@@ -1650,8 +1651,11 @@ mod tests {
         let mut attachment = Config::fake_attachment();
         attachment.filename = None;
 
-        let actual =
-            exporter.format_attachment(&mut attachment, &message, &AttachmentMeta::default());
+        let actual = exporter.format_attachment(
+            &mut attachment,
+            &message,
+            &AttachmentMeta::default()
+        );
 
         assert_eq!(actual, Err("d.jpg"));
     }
@@ -1687,11 +1691,7 @@ mod tests {
         );
 
         // Remove the file created by the constructor for this test
-        let orphaned_path = current_dir()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .join("orphaned.txt");
+        let orphaned_path = current_dir().unwrap().parent().unwrap().join("orphaned.txt");
         std::fs::remove_file(orphaned_path).unwrap();
     }
 
@@ -1727,11 +1727,7 @@ mod tests {
         );
 
         // Remove the file created by the constructor for this test
-        let orphaned_path = current_dir()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .join("orphaned.txt");
+        let orphaned_path = current_dir().unwrap().parent().unwrap().join("orphaned.txt");
         std::fs::remove_file(orphaned_path).unwrap();
     }
 
@@ -1755,9 +1751,7 @@ mod tests {
             ..Default::default()
         };
 
-        let actual = exporter
-            .format_attachment(&mut attachment, &message, &meta)
-            .unwrap();
+        let actual = exporter.format_attachment(&mut attachment, &message, &meta).unwrap();
 
         assert_eq!(actual, "Audio Message.caf\nTranscription: Test");
     }
@@ -1767,13 +1761,13 @@ mod tests {
 mod balloon_format_tests {
     use std::env::set_var;
 
-    use crate::{exporters::exporter::BalloonFormatter, Config, Exporter, Options, TXT};
+    use crate::{ exporters::exporter::BalloonFormatter, Config, Exporter, Options, TXT };
     use imessage_database::message_types::{
         app::AppMessage,
         app_store::AppStoreMessage,
         collaboration::CollaborationMessage,
         music::MusicMessage,
-        placemark::{Placemark, PlacemarkMessage},
+        placemark::{ Placemark, PlacemarkMessage },
         url::URLMessage,
     };
 
@@ -1834,7 +1828,7 @@ mod balloon_format_tests {
             original_url: Some("original_url"),
             url: Some("url"),
             title: Some("title"),
-            creation_date: Some(0.),
+            creation_date: Some(0.0),
             bundle_id: Some("bundle_id"),
             app_name: Some("app_name"),
         };
@@ -2002,7 +1996,8 @@ mod balloon_format_tests {
         };
 
         let expected = exporter.format_check_in(&balloon, "");
-        let actual = "Check\u{a0}In: Has not checked in when expected, location shared\nChecked in at Oct 14, 2023  1:54:29 PM";
+        let actual =
+            "Check\u{a0}In: Has not checked in when expected, location shared\nChecked in at Oct 14, 2023  1:54:29 PM";
 
         assert_eq!(expected, actual);
     }
@@ -2084,7 +2079,8 @@ mod balloon_format_tests {
         };
 
         let expected = exporter.format_placemark(&balloon, "");
-        let actual = "Name\nurl\nname\naddress\nstate\ncity\niso_country_code\npostal_code\ncountry\nstreet\nsub_administrative_area\nsub_locality";
+        let actual =
+            "Name\nurl\nname\naddress\nstate\ncity\niso_country_code\npostal_code\ncountry\nstreet\nsub_administrative_area\nsub_locality";
 
         assert_eq!(expected, actual);
     }
@@ -2110,7 +2106,8 @@ mod balloon_format_tests {
         };
 
         let expected = exporter.format_generic_app(&balloon, "bundle_id", &mut vec![], "");
-        let actual = "app_name message:\ntitle\nsubtitle\ncaption\nsubcaption\ntrailing_caption\ntrailing_subcaption";
+        let actual =
+            "app_name message:\ntitle\nsubtitle\ncaption\nsubcaption\ntrailing_caption\ntrailing_subcaption";
 
         assert_eq!(expected, actual);
     }
@@ -2118,15 +2115,11 @@ mod balloon_format_tests {
 
 #[cfg(test)]
 mod edited_tests {
-    use std::{
-        env::{current_dir, set_var},
-        fs::File,
-        io::Read,
-    };
+    use std::{ env::{ current_dir, set_var }, fs::File, io::Read };
 
-    use crate::{exporters::exporter::Writer, Config, Exporter, Options, TXT};
+    use crate::{ exporters::exporter::Writer, Config, Exporter, Options, TXT };
     use imessage_database::{
-        message_types::edited::{EditStatus, EditedMessage, EditedMessagePart},
+        message_types::edited::{ EditStatus, EditedMessage, EditedMessagePart },
         util::typedstream::parser::TypedStreamReader,
     };
 
@@ -2145,7 +2138,7 @@ mod edited_tests {
         message.date = 674526582885055488;
         message.date_edited = 674530231992568192;
         message.text = Some(
-            "From arbitrary byte stream:\r\u{FFFC}To native Rust data structures:\r".to_string(),
+            "From arbitrary byte stream:\r\u{FFFC}To native Rust data structures:\r".to_string()
         );
         message.is_from_me = true;
         message.chat_id = Some(0);
@@ -2166,7 +2159,7 @@ mod edited_tests {
                 EditedMessagePart {
                     status: EditStatus::Unsent,
                     edit_history: vec![],
-                },
+                }
             ],
         });
 
@@ -2183,7 +2176,8 @@ mod edited_tests {
         message.components = parser.parse().ok();
 
         let actual = exporter.format_message(&message, 0).unwrap();
-        let expected = "May 17, 2022  5:29:42 PM\nMe\nFrom arbitrary byte stream:\r\nAttachment missing!\nTo native Rust data structures:\r\nYou unsent this message part 1 hour, 49 seconds after sending!\n\n";
+        let expected =
+            "May 17, 2022  5:29:42 PM\nMe\nFrom arbitrary byte stream:\r\nAttachment missing!\nTo native Rust data structures:\r\nYou unsent this message part 1 hour, 49 seconds after sending!\n\n";
 
         assert_eq!(actual, expected);
     }
@@ -2202,7 +2196,7 @@ mod edited_tests {
         // May 17, 2022  8:29:42 PM
         message.date = 674526582885055488;
         message.text = Some(
-            "From arbitrary byte stream:\r\u{FFFC}To native Rust data structures:\r".to_string(),
+            "From arbitrary byte stream:\r\u{FFFC}To native Rust data structures:\r".to_string()
         );
         message.is_from_me = true;
         message.chat_id = Some(0);
@@ -2220,7 +2214,8 @@ mod edited_tests {
         message.components = parser.parse().ok();
 
         let actual = exporter.format_message(&message, 0).unwrap();
-        let expected = "May 17, 2022  5:29:42 PM\nMe\nFrom arbitrary byte stream:\r\nAttachment missing!\nTo native Rust data structures:\r\n\n";
+        let expected =
+            "May 17, 2022  5:29:42 PM\nMe\nFrom arbitrary byte stream:\r\nAttachment missing!\nTo native Rust data structures:\r\n\n";
 
         assert_eq!(actual, expected);
     }

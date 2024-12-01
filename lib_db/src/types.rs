@@ -1,15 +1,14 @@
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use surrealdb::sql::{Datetime, Thing};
+use chrono::{ DateTime, Utc };
+use serde::{ Deserialize, Serialize };
+use surrealdb::sql::{ Datetime, Thing };
 
 // Custom serialization module for DateTime<Utc>
 mod datetime_conversion {
     use super::*;
-    use serde::{Deserializer, Serializer};
+    use serde::{ Deserializer, Serializer };
 
     pub fn serialize<S>(datetime: &Option<DateTime<Utc>>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
+        where S: Serializer
     {
         match datetime {
             Some(dt) => Datetime::from(dt.clone()).serialize(serializer),
@@ -18,10 +17,10 @@ mod datetime_conversion {
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<DateTime<Utc>>, D::Error>
-    where
-        D: Deserializer<'de>,
+        where D: Deserializer<'de>
     {
-        Option::<Datetime>::deserialize(deserializer)?
+        Option::<Datetime>
+            ::deserialize(deserializer)?
             .map(|dt| dt.into())
             .map_or(Ok(None), |dt| Ok(Some(dt)))
     }
@@ -35,10 +34,10 @@ struct Record {
     value: i32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Message {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<Thing>,
+    pub id: Option<String>,
     pub rowid: i32,
     pub guid: String,
     pub text: Option<String>,
