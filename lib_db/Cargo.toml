@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 indicatif = "0.17.8"
 serde = "1.0.214"
-surrealdb = { version = "2.1.0", features = ["protocol-ws", "kv-rocksdb"] }
+surrealdb = { version = "2.1.2", features = ["protocol-ws", "kv-rocksdb"] }
 tokio = { version = "1.41.1", features = ["full"] }
 dirs = "5.0"
 async-trait = "0.1.83"
