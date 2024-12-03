@@ -5,8 +5,6 @@ use tokio::runtime::Runtime;
 use url::Url;
 
 const DEFAULT_HTTP_ENDPOINT: &str = "http://localhost:3000";
-const MESSAGES_ENDPOINT: &str = "/messages";
-const FLUSH_ENDPOINT: &str = "/flush";
 
 pub(crate) struct HttpDatabase {
     connection: DatabaseConnection,
@@ -21,30 +19,36 @@ impl HttpDatabase {
         let mut client_builder = ClientBuilder::new().danger_accept_invalid_certs(true);
 
         // Configure TLS if certificate path is provided
-        if let Ok(cert_path) = env::var("TLS_CERT") {
-            eprintln!("Using TLS certificate from: {}", cert_path);
-            let cert = fs::read(&cert_path)?;
-            let cert = Certificate::from_pem(&cert)?;
-            client_builder = client_builder.add_root_certificate(cert).use_native_tls();
+        if let Ok(cert_path) = env::var("TLS_CERT_PEM") {
+            eprintln!("Reading TLS certificate from path: {}", cert_path);
+            match fs::read(&cert_path) {
+                Ok(cert_contents) => {
+                    let cert = Certificate::from_pem(&cert_contents)?;
+                    client_builder = client_builder.add_root_certificate(cert).use_native_tls();
+                }
+                Err(e) => {
+                    eprintln!("Failed to read certificate file at {}: {}", cert_path, e);
+                    return Err(e.into());
+                }
+            }
         }
 
         let client = client_builder.build()?;
 
         // Determine base URL from DBPATH or fallback
         let base_url = if let Ok(path) = env::var("DBPATH") {
+            eprintln!("Exporter sees DBPATH: {}", path);
             if let Ok(url) = Url::parse(&path) {
                 if url.scheme() == "http" || url.scheme() == "https" {
                     path
                 } else {
                     DEFAULT_HTTP_ENDPOINT.to_string()
                 }
-            } else if path == "remote" {
-                DEFAULT_HTTP_ENDPOINT.to_string()
             } else {
                 DEFAULT_HTTP_ENDPOINT.to_string()
             }
         } else {
-            DEFAULT_HTTP_ENDPOINT.to_string()
+            return Err(format!("Invalid URL scheme").into());
         };
 
         // Force HTTPS when using TLS
@@ -92,9 +96,7 @@ impl Database for HttpDatabase {
             let rt = Runtime::new()?;
 
             rt.block_on(async {
-                let url = format!("{}{}", base_url, MESSAGES_ENDPOINT);
-
-                let response = match client.post(&url).json(&messages).send().await {
+                let response = match client.post(&base_url).json(&messages).send().await {
                     Ok(resp) => resp,
                     Err(e) => {
                         eprintln!("HTTP request failed: {}", e);
@@ -120,20 +122,6 @@ impl Database for HttpDatabase {
     }
 
     fn flush(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let client = self.client.clone();
-        let base_url = self.base_url.clone();
-
-        let handle = std::thread::spawn(move || {
-            let rt = Runtime::new()?;
-
-            rt.block_on(async {
-                let url = format!("{}{}", base_url, FLUSH_ENDPOINT);
-                let response = client.post(&url).send().await?;
-                let response = Self::validate_response(response, "flush")?;
-                Ok(())
-            })
-        });
-
-        handle.join().unwrap()
+        Ok(())
     }
 }

@@ -21,7 +21,7 @@ async fn run_server(
     state: Arc<Mutex<ServerState>>
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let app = Router::new()
-        .route("/messages", post(handle_messages))
+        .route("/ingest", post(handle_messages))
         .route("/flush", post(handle_flush))
         .with_state(state);
 
@@ -91,24 +91,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let provider = rustls::crypto::ring::default_provider();
     CryptoProvider::install_default(provider).expect("Failed to install crypto provider");
 
-    // Create temporary directory for certificates
-    let cert_dir = TempDir::new()?;
-    let cert_path = cert_dir.path().join("cert.pem");
-    let key_path = cert_dir.path().join("key.pem");
-
     // Generate self-signed certificate
     let mut params = CertificateParams::default();
     params.distinguished_name = DistinguishedName::new();
+
     let key_pair = KeyPair::generate()?;
     let cert = params.self_signed(&key_pair)?;
 
-    // Save certificate and private key
+    // Only write the certificate, keep private key in memory
+    let cert_dir = TempDir::new()?;
+    let cert_path = cert_dir.path().join("cert.pem");
     fs::write(&cert_path, cert.pem())?;
-    fs::write(&key_path, key_pair.serialize_pem())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&cert_path, fs::Permissions::from_mode(0o600))?;
+    }
 
-    // Set environment variables for both server and client
+    // Configure rustls with in-memory private key
+    let config = RustlsConfig::from_pem(
+        cert.pem().into_bytes(),
+        key_pair.serialize_pem().into_bytes()
+    ).await?;
+
+    // Only share certificate path with client
     env::set_var("TLS_CERT", cert_path.to_str().unwrap());
-    env::set_var("TLS_KEY", key_path.to_str().unwrap());
     env::set_var("DBPATH", "https://localhost:3000");
 
     // Create shared state
@@ -187,7 +194,7 @@ mod tests {
             // Test message insertion
             let messages = vec![Message::default()];
             let response = client
-                .post("http://localhost:3000/messages")
+                .post("http://localhost:3000/ingest")
                 .json(&messages)
                 .send().await
                 .unwrap();
