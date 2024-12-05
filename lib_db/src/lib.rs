@@ -3,8 +3,7 @@ mod types;
 
 use std::sync::Arc;
 
-use databases::surreal::SurrealDatabase;
-use databases::http::HttpDatabase;
+use databases::{ surreal::SurrealDatabase, http::HttpDatabase, socket::SocketDatabase };
 use tokio::runtime::Runtime;
 pub use types::Message;
 
@@ -22,6 +21,7 @@ pub const FALLBACK_DB_ENDPOINT: &str = "ws://localhost:8000";
 pub enum DatabaseType {
     Surreal,
     Http,
+    Socket,
 }
 
 // Public database interface
@@ -57,6 +57,10 @@ impl dyn Database {
             }
             DatabaseType::Http => {
                 let db = runtime.block_on(async { HttpDatabase::create(connection).await })?;
+                Ok(Box::new(db) as Box<dyn Database + Send + Sync>)
+            }
+            DatabaseType::Socket => {
+                let db = runtime.block_on(async { SocketDatabase::create(connection).await })?;
                 Ok(Box::new(db) as Box<dyn Database + Send + Sync>)
             }
         }

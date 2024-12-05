@@ -20,6 +20,16 @@ async fn run_server(
     port: u16,
     state: Arc<Mutex<ServerState>>
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let provider = rustls::crypto::ring::default_provider();
+    CryptoProvider::install_default(provider).expect("Failed to install crypto provider");
+
+    // Generate self-signed certificate
+    let mut params = CertificateParams::default();
+    params.distinguished_name = DistinguishedName::new();
+
+    let key_pair = KeyPair::generate()?;
+    let cert = params.self_signed(&key_pair)?;
+
     let app = Router::new()
         .route("/ingest", post(handle_messages))
         .route("/flush", post(handle_flush))
@@ -27,20 +37,15 @@ async fn run_server(
 
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
 
-    // Check for TLS configuration
-    if let (Ok(cert_path), Ok(key_path)) = (env::var("TLS_CERT"), env::var("TLS_KEY")) {
-        eprintln!("Starting HTTPS server with TLS certificate");
-        let config = RustlsConfig::from_pem_file(
-            PathBuf::from(cert_path),
-            PathBuf::from(key_path)
-        ).await?;
+    // Configure TLS with generated certificate
+    let config = RustlsConfig::from_pem(
+        cert.pem().into_bytes(),
+        key_pair.serialize_pem().into_bytes()
+    ).await?;
 
-        axum_server::bind_rustls(addr, config).serve(app.into_make_service()).await?;
-    } else {
-        eprintln!("Starting HTTP server");
-        axum::serve(tokio::net::TcpListener::bind(addr).await?, app.into_make_service()).await?;
-    }
-
+    eprintln!("Starting HTTPS server with generated TLS certificate");
+    axum_server::bind_rustls(addr, config).serve(app.into_make_service()).await?;
+    println!("Server started on port {}", port);
     Ok(())
 }
 
@@ -88,35 +93,8 @@ async fn handle_flush(State(state): State<Arc<Mutex<ServerState>>>) -> (
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Install default crypto provider
-    let provider = rustls::crypto::ring::default_provider();
-    CryptoProvider::install_default(provider).expect("Failed to install crypto provider");
 
-    // Generate self-signed certificate
-    let mut params = CertificateParams::default();
-    params.distinguished_name = DistinguishedName::new();
-
-    let key_pair = KeyPair::generate()?;
-    let cert = params.self_signed(&key_pair)?;
-
-    // Only write the certificate, keep private key in memory
-    let cert_dir = TempDir::new()?;
-    let cert_path = cert_dir.path().join("cert.pem");
-    fs::write(&cert_path, cert.pem())?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&cert_path, fs::Permissions::from_mode(0o600))?;
-    }
-
-    // Configure rustls with in-memory private key
-    let config = RustlsConfig::from_pem(
-        cert.pem().into_bytes(),
-        key_pair.serialize_pem().into_bytes()
-    ).await?;
-
-    // Only share certificate path with client
-    env::set_var("TLS_CERT", cert_path.to_str().unwrap());
-    env::set_var("DBPATH", "https://localhost:3000");
+    env::set_var("DBPATH", "https://localhost:3000/ingest");
 
     // Create shared state
     let state = Arc::new(
@@ -136,16 +114,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Run imessage-exporter from release build
     println!("Running imessage-exporter...");
-    let status = Command::new(
-        "/Users/user/dev/fork/imessage-exporter/target/release/imessage-exporter"
-    )
-        .env("DBPATH", "https://localhost:3000")
-        .env("TLS_CERT", cert_path.to_str().unwrap())
-        .args(["-f", "db"])
+    let status = Command::new("cargo")
+        .args([
+            "run",
+            "--bin",
+            "imessage-exporter",
+            "--", // Separates cargo args from program args
+            "-f",
+            "db",
+        ])
+        .env("DBPATH", "https://localhost:3000/ingest")
+        .current_dir("../imessage-exporter") // Change to the correct directory
         .status()?;
 
     println!("imessage-exporter completed with status: {}", status);
-
     // Print server stats
     let state_lock = state.lock().await;
     println!(
@@ -156,7 +138,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Clean up
     server_handle.abort();
-    cert_dir.close()?;
 
     Ok(())
 }
@@ -167,9 +148,49 @@ mod tests {
     use tokio::runtime::Runtime;
     use std::time::Duration;
 
+    async fn wait_for_server(client: &reqwest::Client) {
+        let mut attempts = 0;
+        while attempts < 50 {
+            match
+                client
+                    .post("https://localhost:3000/ingest")
+                    .json(&Vec::<Message>::new())
+                    .send().await
+            {
+                Ok(_) => {
+                    return;
+                }
+                Err(_) => {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    attempts += 1;
+                }
+            }
+        }
+        panic!("Server failed to start after 5 seconds");
+    }
+
     #[test]
     fn test_server() {
+        // Install default crypto provider
+        let provider = rustls::crypto::ring::default_provider();
+        CryptoProvider::install_default(provider).expect("Failed to install crypto provider");
+
         let rt = Runtime::new().unwrap();
+
+        // Set up TLS certificates
+        let mut params = CertificateParams::default();
+        params.distinguished_name = DistinguishedName::new();
+        let key_pair = KeyPair::generate().unwrap();
+        let cert = params.self_signed(&key_pair).unwrap();
+
+        // Create temporary directory for cert
+        let cert_dir = TempDir::new().unwrap();
+        let cert_path = cert_dir.path().join("cert.pem");
+        fs::write(&cert_path, cert.pem()).unwrap();
+
+        // Set environment variables
+        env::set_var("TLS_CERT", cert_path.to_str().unwrap());
+        env::set_var("TLS_KEY", cert_path.to_str().unwrap()); // Not actually used, but maintains consistency
 
         // Create test state
         let state = Arc::new(
@@ -187,14 +208,20 @@ mod tests {
         // Give server time to start
         std::thread::sleep(Duration::from_millis(100));
 
-        // Test client requests
         rt.block_on(async {
-            let client = reqwest::Client::new();
+            let client = reqwest::Client
+                ::builder()
+                .danger_accept_invalid_certs(true)
+                .build()
+                .unwrap();
+
+            // Wait for server to be ready
+            wait_for_server(&client).await;
 
             // Test message insertion
             let messages = vec![Message::default()];
             let response = client
-                .post("http://localhost:3000/ingest")
+                .post("https://localhost:3000/ingest")
                 .json(&messages)
                 .send().await
                 .unwrap();
@@ -207,5 +234,8 @@ mod tests {
             let stats: serde_json::Value = response.json().await.unwrap();
             assert_eq!(stats["message_count"], 1);
         });
+
+        // Clean up
+        cert_dir.close().unwrap();
     }
 }

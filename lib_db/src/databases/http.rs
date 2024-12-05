@@ -4,7 +4,7 @@ use std::{ env, fs, error::Error as StdError };
 use tokio::runtime::Runtime;
 use url::Url;
 
-const DEFAULT_HTTP_ENDPOINT: &str = "http://localhost:3000";
+const DEFAULT_HTTPS_ENDPOINT: &str = "https://localhost:3000";
 
 pub(crate) struct HttpDatabase {
     connection: DatabaseConnection,
@@ -16,49 +16,18 @@ impl HttpDatabase {
     pub(crate) async fn create(
         connection: DatabaseConnection
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let mut client_builder = ClientBuilder::new().danger_accept_invalid_certs(true);
-
-        // Configure TLS if certificate path is provided
-        if let Ok(cert_path) = env::var("TLS_CERT_PEM") {
-            eprintln!("Reading TLS certificate from path: {}", cert_path);
-            match fs::read(&cert_path) {
-                Ok(cert_contents) => {
-                    let cert = Certificate::from_pem(&cert_contents)?;
-                    client_builder = client_builder.add_root_certificate(cert).use_native_tls();
-                }
-                Err(e) => {
-                    eprintln!("Failed to read certificate file at {}: {}", cert_path, e);
-                    return Err(e.into());
-                }
-            }
-        }
-
-        let client = client_builder.build()?;
+        let mut client = ClientBuilder::new().danger_accept_invalid_certs(true).build()?;
 
         // Determine base URL from DBPATH or fallback
         let base_url = if let Ok(path) = env::var("DBPATH") {
             eprintln!("Exporter sees DBPATH: {}", path);
             if let Ok(url) = Url::parse(&path) {
-                if url.scheme() == "http" || url.scheme() == "https" {
-                    path
-                } else {
-                    DEFAULT_HTTP_ENDPOINT.to_string()
-                }
+                if url.scheme() == "https" { path } else { DEFAULT_HTTPS_ENDPOINT.to_string() }
             } else {
-                DEFAULT_HTTP_ENDPOINT.to_string()
+                DEFAULT_HTTPS_ENDPOINT.to_string()
             }
         } else {
             return Err(format!("Invalid URL scheme").into());
-        };
-
-        // Force HTTPS when using TLS
-        let base_url = if env::var("TLS_CERT").is_ok() && !base_url.starts_with("https://") {
-            eprintln!(
-                "Warning: TLS certificate provided but not using HTTPS. Converting to HTTPS."
-            );
-            base_url.replace("http://", "https://")
-        } else {
-            base_url
         };
 
         eprintln!("Using HTTP API endpoint: {}", base_url);

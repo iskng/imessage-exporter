@@ -62,8 +62,10 @@ impl<'a> Exporter<'a> for DB<'a> {
     fn new(config: &'a Config) -> Result<Self, RuntimeError> {
         // Determine database type based on DBPATH
         let db_type = if let Ok(path) = std::env::var("DBPATH") {
-            if path.starts_with("http://") || path.starts_with("https://") {
+            if path.starts_with("https://") {
                 DatabaseType::Http
+            } else if path.starts_with("/") {
+                DatabaseType::Socket
             } else {
                 DatabaseType::Surreal
             }
