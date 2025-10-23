@@ -47,7 +47,7 @@ The [releases page](https://github.com/ReagentX/imessage-exporter/releases) prov
 -d, --diagnostics
         Print diagnostic information and exit
         
--f, --format <txt, html>
+-f, --format <txt, html, db>
         Specify a single file format to export messages into
         
 -c, --copy-method <clone, basic, full, disabled>
@@ -65,6 +65,13 @@ The [releases page](https://github.com/ReagentX/imessage-exporter/releases) prov
         For iOS, specify a path to the root of a device backup directory
         If the iOS backup is encrypted, --cleartext-password must be passed
         If omitted, the default directory is ~/Library/Messages/chat.db
+
+### Database export configuration
+
+When using `-f db`, set the `DBPATH` environment variable to the Unix domain
+socket your downstream consumer listens on (for example,
+`DBPATH=/tmp/imessage-exporter.sock`). HTTP and SurrealDB targets are no longer
+supported.
         
 -r, --attachment-root <path/to/attachments>
         Specify an optional custom path to look for attachments in (macOS only)

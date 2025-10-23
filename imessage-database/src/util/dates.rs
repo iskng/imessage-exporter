@@ -56,6 +56,12 @@ pub fn get_local_time(date_stamp: &i64, offset: &i64) -> Result<DateTime<Local>,
     Ok(Local.from_utc_datetime(&utc_stamp))
 }
 
+/// Create a `DateTime<Utc>` from an arbitrary date and offset
+pub fn get_utc_time(date_stamp: &i64, offset: &i64) -> Result<DateTime<Utc>, MessageError> {
+    DateTime::from_timestamp((date_stamp / TIMESTAMP_FACTOR) + offset, 0)
+        .ok_or(MessageError::InvalidTimestamp(*date_stamp))
+}
+
 /// Format a date from the iMessage table for reading
 ///
 /// # Example:

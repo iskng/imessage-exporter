@@ -15,7 +15,7 @@ use fs2::available_space;
 use rusqlite::Connection;
 
 use crate::{
-    Exporter, HTML, TXT,
+    DB, Exporter, HTML, TXT,
     app::{
         compatibility::{
             attachment_manager::AttachmentManagerMode,
@@ -495,6 +495,9 @@ impl Config {
                 }
                 ExportType::Txt => {
                     TXT::new(self)?.iter_messages()?;
+                }
+                ExportType::Db => {
+                    DB::new(self)?.iter_messages()?;
                 }
             }
         }

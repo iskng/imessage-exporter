@@ -11,6 +11,8 @@ pub enum ExportType {
     Html,
     /// Text file export
     Txt,
+    /// Database export
+    Db,
 }
 
 impl ExportType {
@@ -19,6 +21,7 @@ impl ExportType {
         match platform.to_lowercase().as_str() {
             "txt" => Some(Self::Txt),
             "html" => Some(Self::Html),
+            "db" => Some(Self::Db),
             _ => None,
         }
     }
@@ -28,6 +31,7 @@ impl ExportType {
         match self {
             ExportType::Html => ".html",
             ExportType::Txt => ".txt",
+            ExportType::Db => ".db",
         }
     }
 }
@@ -37,6 +41,7 @@ impl Display for ExportType {
         match self {
             ExportType::Txt => write!(fmt, "txt"),
             ExportType::Html => write!(fmt, "html"),
+            ExportType::Db => write!(fmt, "db"),
         }
     }
 }
@@ -66,6 +71,13 @@ mod tests {
         assert!(matches!(ExportType::from_cli("txt"), Some(ExportType::Txt)));
         assert!(matches!(ExportType::from_cli("TXT"), Some(ExportType::Txt)));
         assert!(matches!(ExportType::from_cli("tXt"), Some(ExportType::Txt)));
+    }
+
+    #[test]
+    fn can_parse_db_any_case() {
+        assert!(matches!(ExportType::from_cli("db"), Some(ExportType::Db)));
+        assert!(matches!(ExportType::from_cli("DB"), Some(ExportType::Db)));
+        assert!(matches!(ExportType::from_cli("dB"), Some(ExportType::Db)));
     }
 
     #[test]

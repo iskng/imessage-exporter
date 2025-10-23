@@ -15,6 +15,7 @@ filetime = "=0.2.26"
 fdlimit = "=0.3.0"
 fs2 = "=0.4.3"
 imessage-database = { path = "../imessage-database" }
+lib_db = { path = "../lib_db" }
 indicatif = "=0.18.0"
 rusqlite = { version = "0.37.0", features = ["blob", "bundled"] }
 crabapple = { version = "=0.4.3" }

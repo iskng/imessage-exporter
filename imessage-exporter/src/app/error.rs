@@ -5,6 +5,7 @@
 use std::{
     fmt::{Display, Formatter, Result},
     io::Error as IoError,
+    path::PathBuf,
 };
 
 use crabapple::error::BackupError;
@@ -16,17 +17,20 @@ use crate::app::options::OPTION_BYPASS_FREE_SPACE_CHECK;
 #[derive(Debug)]
 pub enum RuntimeError {
     InvalidOptions(String),
+    CreateError(IoError, PathBuf),
     DiskError(IoError),
     DatabaseError(TableError),
     BackupError(BackupError),
     NotEnoughAvailableSpace(u64, u64),
     FileNameError,
+    ExportError(Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl Display for RuntimeError {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result {
         match self {
             RuntimeError::InvalidOptions(why) => write!(fmt, "Invalid options!\n{why}"),
+            RuntimeError::CreateError(why, path) => write!(fmt, "{why}: {}", path.display()),
             RuntimeError::DiskError(why) => write!(fmt, "{why}"),
             RuntimeError::DatabaseError(why) => write!(fmt, "{why}"),
             RuntimeError::NotEnoughAvailableSpace(estimated_bytes, available_bytes) => {
@@ -39,6 +43,7 @@ impl Display for RuntimeError {
             }
             RuntimeError::BackupError(why) => write!(fmt, "{why}"),
             RuntimeError::FileNameError => write!(fmt, "Invalid file name!"),
+            RuntimeError::ExportError(why) => write!(fmt, "Export error: {why}"),
         }
     }
 }
