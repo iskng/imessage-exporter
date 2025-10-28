@@ -3,13 +3,15 @@ mod types;
 
 use std::sync::Arc;
 
-use databases::socket::SocketDatabase;
+use databases::{ingest::IngestDatabase, ingest_v2::IngestV2Database, socket::SocketDatabase};
 use tokio::runtime::Runtime;
 pub use types::Message;
 
 #[derive(Debug, Clone)]
 pub enum DatabaseType {
     Socket,
+    Ingest,
+    IngestV2,
 }
 
 /// Public database interface implemented by the supported backends.
@@ -40,6 +42,14 @@ impl dyn Database {
         match db_type {
             DatabaseType::Socket => {
                 let db = runtime.block_on(async { SocketDatabase::create(connection).await })?;
+                Ok(Box::new(db) as Box<dyn Database + Send + Sync>)
+            }
+            DatabaseType::Ingest => {
+                let db = runtime.block_on(async { IngestDatabase::create(connection).await })?;
+                Ok(Box::new(db) as Box<dyn Database + Send + Sync>)
+            }
+            DatabaseType::IngestV2 => {
+                let db = runtime.block_on(async { IngestV2Database::create(connection).await })?;
                 Ok(Box::new(db) as Box<dyn Database + Send + Sync>)
             }
         }

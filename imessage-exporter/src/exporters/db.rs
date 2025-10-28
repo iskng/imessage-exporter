@@ -64,17 +64,31 @@ pub struct DB<'a> {
 
 impl<'a> Exporter<'a> for DB<'a> {
     fn new(config: &'a Config) -> Result<Self, RuntimeError> {
+        let protocol = std::env::var("DB_PROTOCOL")
+            .unwrap_or_else(|_| "socket".to_string())
+            .to_lowercase();
+
+        let db_type = match protocol.as_str() {
+            "" | "socket" => DatabaseType::Socket,
+            "ingest" => DatabaseType::Ingest,
+            "ingest_v2" | "ingest2" | "ingest-v2" => DatabaseType::IngestV2,
+            other => {
+                return Err(RuntimeError::InvalidOptions(format!(
+                    "Unknown DB protocol '{other}'. Supported: socket, ingest, ingest_v2"
+                )));
+            }
+        };
+
         if let Ok(path) = std::env::var("DBPATH") {
             if path.starts_with("http://") || path.starts_with("https://") {
                 return Err(RuntimeError::InvalidOptions(
-                    "HTTP endpoints are no longer supported. Provide a Unix socket path in DBPATH."
+                    "HTTP endpoints are not supported. Provide a Unix socket path in DBPATH."
                         .to_string(),
                 ));
             }
         }
 
-        let database =
-            <dyn Database>::new(DatabaseType::Socket).map_err(RuntimeError::ExportError)?;
+        let database = <dyn Database>::new(db_type).map_err(RuntimeError::ExportError)?;
 
         Ok(DB {
             config,

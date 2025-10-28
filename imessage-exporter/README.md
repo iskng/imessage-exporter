@@ -72,6 +72,14 @@ When using `-f db`, set the `DBPATH` environment variable to the Unix domain
 socket your downstream consumer listens on (for example,
 `DBPATH=/tmp/imessage-exporter.sock`). HTTP and SurrealDB targets are no longer
 supported.
+
+Set `DB_PROTOCOL=ingest` to opt into the generic ingest protocol. Optional
+tunables include:
+
+* `DB_CHUNK_SIZE` – number of messages per batch (default 500)
+* `DB_WRITE_TIMEOUT_SECS` – writer timeout in seconds (default 10)
+* `DB_SOURCE` – source identifier reported to the ingest service
+* `DB_PROTOCOL_VERSION` – protocol version to advertise (default 1)
         
 -r, --attachment-root <path/to/attachments>
         Specify an optional custom path to look for attachments in (macOS only)
