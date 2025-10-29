@@ -73,13 +73,18 @@ socket your downstream consumer listens on (for example,
 `DBPATH=/tmp/imessage-exporter.sock`). HTTP and SurrealDB targets are no longer
 supported.
 
-Set `DB_PROTOCOL=ingest` to opt into the generic ingest protocol. Optional
+Set `DB_PROTOCOL=ingest_v2` to use the v2 framed ingest protocol. Optional
 tunables include:
 
-* `DB_CHUNK_SIZE` – number of messages per batch (default 500)
-* `DB_WRITE_TIMEOUT_SECS` – writer timeout in seconds (default 10)
+* `DB_CHUNK_SIZE` – number of messages per batch (default 2000; min 250, max 16000)
+* `DB_MAX_INFLIGHT` – max batches in flight for pipelining (default 8; min 1, max 128)
+* `DB_CODEC` – payload codec: `protobuf`, `binary`, `json`, or `auto` (default `protobuf`)
+* `DB_COMPRESSION` – payload compression: `none|off`, `zstd`, or `auto` (default `zstd`)
+* `DB_ZSTD_LEVEL` – zstd compression level (1–22, default 1)
+* `DB_PARALLEL_SESSIONS` – number of concurrent sessions (1–16, default 1)
+* `DB_SKIP_INIT` – ignore server Init and force client transport (default false)
 * `DB_SOURCE` – source identifier reported to the ingest service
-* `DB_PROTOCOL_VERSION` – protocol version to advertise (default 1)
+* `DB_NEXT_WATERMARK` – optional watermark for incremental runs; echoed in completion
         
 -r, --attachment-root <path/to/attachments>
         Specify an optional custom path to look for attachments in (macOS only)

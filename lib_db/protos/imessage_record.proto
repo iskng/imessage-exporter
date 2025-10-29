@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package ingest.imessage;
+
+message ImessageRecord {
+  optional string id = 1;
+  int32 rowid = 2;
+  string guid = 3;
+  optional string text = 4;
+  optional string service = 5;
+  string platform = 6;
+  optional int32 handle_id = 7;
+  optional string destination_caller_id = 8;
+  optional string subject = 9;
+  optional int64 date = 10;           // micros UTC
+  optional int64 date_read = 11;      // micros UTC
+  optional int64 date_delivered = 12; // micros UTC
+  bool is_from_me = 13;
+  bool is_read = 14;
+  int32 item_type = 15;
+  optional int32 other_handle = 16;
+  bool share_status = 17;
+  optional bool share_direction = 18;
+  optional string group_title = 19;
+  int32 group_action_type = 20;
+  optional string associated_message_guid = 21;
+  optional int32 associated_message_type = 22;
+  optional string balloon_bundle_id = 23;
+  optional string expressive_send_style_id = 24;
+  optional string thread_originator_guid = 25;
+  optional string thread_originator_part = 26;
+  optional int64 date_edited = 27;    // micros UTC
+  optional int32 chat_id = 28;
+  string unique_chat_id = 29;
+  int32 num_attachments = 30;
+  optional int32 deleted_from = 31;
+  int32 num_replies = 32;
+  string full_message = 33;
+  optional string thread_name = 34;
+  repeated string attachment_paths = 35;
+  bool is_deleted = 36;
+  bool is_edited = 37;
+  bool is_reply = 38;
+  optional string associated_message_emoji = 39;
+  string phone_number = 40;
+}
+

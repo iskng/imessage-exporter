@@ -1,16 +1,16 @@
 pub mod databases;
+pub mod proto;
 mod types;
 
 use std::sync::Arc;
 
-use databases::{ingest::IngestDatabase, ingest_v2::IngestV2Database, socket::SocketDatabase};
+use databases::{ingest_v2::IngestV2Database, socket::SocketDatabase};
 use tokio::runtime::Runtime;
 pub use types::Message;
 
 #[derive(Debug, Clone)]
 pub enum DatabaseType {
     Socket,
-    Ingest,
     IngestV2,
 }
 
@@ -42,10 +42,6 @@ impl dyn Database {
         match db_type {
             DatabaseType::Socket => {
                 let db = runtime.block_on(async { SocketDatabase::create(connection).await })?;
-                Ok(Box::new(db) as Box<dyn Database + Send + Sync>)
-            }
-            DatabaseType::Ingest => {
-                let db = runtime.block_on(async { IngestDatabase::create(connection).await })?;
                 Ok(Box::new(db) as Box<dyn Database + Send + Sync>)
             }
             DatabaseType::IngestV2 => {

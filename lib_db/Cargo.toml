@@ -11,6 +11,14 @@ chrono = { version = "0.4.38", features = ["serde"] }
 tokio = { version = "1.41", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time"] }
 uuid = { version = "1.10", features = ["v4"] }
 ingest_protocol = { path = "../../../../macos/ingest_bin/crates/ingest_protocol" }
+ingest_models = { path = "../../../../macos/ingest_bin/crates/ingest_models" }
+postcard = { version = "1", features = ["alloc"] }
+zstd = "0.12"
+prost = "0.12"
+
+[build-dependencies]
+prost-build = "0.12"
+protoc-bin-vendored = "3"
 [dev-dependencies]
 tempfile = "3.8"
 

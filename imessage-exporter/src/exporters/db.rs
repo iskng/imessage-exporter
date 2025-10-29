@@ -70,11 +70,11 @@ impl<'a> Exporter<'a> for DB<'a> {
 
         let db_type = match protocol.as_str() {
             "" | "socket" => DatabaseType::Socket,
-            "ingest" => DatabaseType::Ingest,
-            "ingest_v2" | "ingest2" | "ingest-v2" => DatabaseType::IngestV2,
+            // Map legacy "ingest" to v2 backend
+            "ingest" | "ingest_v2" | "ingest2" | "ingest-v2" => DatabaseType::IngestV2,
             other => {
                 return Err(RuntimeError::InvalidOptions(format!(
-                    "Unknown DB protocol '{other}'. Supported: socket, ingest, ingest_v2"
+                    "Unknown DB protocol '{other}'. Supported: socket, ingest_v2"
                 )));
             }
         };
