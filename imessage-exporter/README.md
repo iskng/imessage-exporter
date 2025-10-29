@@ -78,13 +78,10 @@ tunables include:
 
 * `DB_CHUNK_SIZE` – number of messages per batch (default 2000; min 250, max 16000)
 * `DB_MAX_INFLIGHT` – max batches in flight for pipelining (default 8; min 1, max 128)
-* `DB_CODEC` – payload codec: `protobuf`, `binary`, `json`, or `auto` (default `protobuf`)
-* `DB_COMPRESSION` – payload compression: `none|off`, `zstd`, or `auto` (default `zstd`)
-* `DB_ZSTD_LEVEL` – zstd compression level (1–22, default 1)
-* `DB_PARALLEL_SESSIONS` – number of concurrent sessions (1–16, default 1)
-* `DB_SKIP_INIT` – ignore server Init and force client transport (default false)
+* `DB_CODEC` – payload codec: `protobuf`, `binary`, or `json` (default `protobuf`)
+* `DB_COMPRESSION` – payload compression: `none|off` or `zstd` (default `zstd`)
 * `DB_SOURCE` – source identifier reported to the ingest service
-* `DB_NEXT_WATERMARK` – optional watermark for incremental runs; echoed in completion
+* `DB_NEXT_WATERMARK` – optional watermark token to include in completion
         
 -r, --attachment-root <path/to/attachments>
         Specify an optional custom path to look for attachments in (macOS only)

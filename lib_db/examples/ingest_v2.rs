@@ -4,9 +4,11 @@
 //! (`DB_PROTOCOL=ingest_v2`), and prints stats similar to other demos.
 
 use anyhow::anyhow;
-use ingest_protocol::v2::{server, wire as w, Codec, Compression, TransportConfig};
+use ingest_protocol::v2::{
+    server, Codec, Compression, GenericIngestArgs, GenericIngestState, TransportConfig, VecAccumulator,
+};
 use ingest_models::{AuthContext, IngestInit, TransportContext as ProtoTransportContext, WatermarkContext};
-use lib_db::{databases::ingest_v2_record::IngestRecord, Message};
+use lib_db::proto::ImessageRecord;
 use std::{
     io::ErrorKind,
     process::Command,
@@ -19,8 +21,8 @@ use tokio::{net::UnixListener, sync::oneshot};
 struct ServerStats {
     total_entries: usize,
     sessions: usize,
-    first_record: Option<IngestRecord>,
-    last_record: Option<IngestRecord>,
+    first_record: Option<ImessageRecord>,
+    last_record: Option<ImessageRecord>,
     watermark: Option<String>,
 }
 
@@ -60,9 +62,9 @@ async fn main() -> anyhow::Result<()> {
     std::env::set_var("DB_PROTOCOL", "ingest_v2");
     std::env::set_var("DB_CHUNK_SIZE", "4000");
     std::env::set_var("DB_MAX_INFLIGHT", "16");
-    // Use JSON/none in example server to simplify decoding
-    std::env::set_var("DB_CODEC", "json");
-    std::env::set_var("DB_COMPRESSION", "none");
+    // Encourage exporter to use protobuf + zstd for performance
+    std::env::set_var("DB_CODEC", "protobuf");
+    std::env::set_var("DB_COMPRESSION", "zstd");
     std::env::set_var("DB_SOURCE", "ingest-v2-example");
 
     println!("Running imessage-exporter through cargo...");
@@ -119,10 +121,10 @@ async fn run_server(
 }
 
 async fn handle_connection(
-    mut stream: tokio::net::UnixStream,
+    stream: tokio::net::UnixStream,
     stats: Arc<Mutex<ServerStats>>,
 ) -> anyhow::Result<()> {
-    // Build typed init payload using ingest_models (advertise JSON/None for demo)
+    // Build typed init payload using ingest_models and advertise Protobuf+Zstd
     let session_id = format!(
         "srv-{}-{}",
         std::process::id(),
@@ -132,224 +134,40 @@ async fn handle_connection(
         version: 1,
         session_id: session_id.clone(),
         source_id: "imessage_v2".to_string(),
-        transport: Some(ProtoTransportContext {
-            codec: "json".to_string(),
-            compression: "none".to_string(),
-            chunk_size: 4000,
-            max_inflight: 16,
-        }),
-        auth: Some(AuthContext {
-            provider_id: String::new(),
-            token_type: String::new(),
-            access_token: String::new(),
-            user_id: None,
-            expires_at: None,
-        }),
-        watermark: Some(WatermarkContext {
-            time_iso: None,
-            token: None,
-        }),
-        job_type_url: String::new(),
-        job_payload: Vec::new(),
+        transport: Some(ProtoTransportContext { codec: "protobuf".into(), compression: "zstd".into(), chunk_size: 4000, max_inflight: 16 }),
+        auth: Some(AuthContext { provider_id: String::new(), token_type: String::new(), access_token: String::new(), user_id: None, expires_at: None }),
+        watermark: Some(WatermarkContext { time: None, token: None }),
+        job: None,
         labels: Default::default(),
     };
-    let init_wire = server::InitBuilder::new(session_id.clone(), "imessage_v2")
-        .with_transport(TransportConfig { codec: Codec::Json, compression: Compression::None, max_inflight: 16, chunk_size: 4000 })
+    let init = server::InitBuilder::new(session_id, "imessage_v2")
+        .with_transport(TransportConfig { codec: Codec::Protobuf, compression: Compression::Zstd, max_inflight: 16, chunk_size: 4000 })
         .with_typed_job(&job)
         .finish();
-    server::send_init_frame(&mut stream, &init_wire).await?;
 
-    // Expect Hello
-    let (opcode, codec, compression, payload) = read_frame(&mut stream).await?;
-    if opcode != 1 {
-        anyhow::bail!("expected Hello frame, got opcode {}", opcode);
-    }
-    // Decode wrapper message (JSON external tagging: {"hello": {...}})
-    let msg: w::Message<IngestRecord> = decode_message(codec, compression, &payload)?;
-    let w::Message::Hello(hello) = msg else { anyhow::bail!("expected Hello message payload") };
-    if hello.total_batches == 0 {
-        anyhow::bail!("hello must declare at least one batch");
-    }
-    let mut expected_next = 0usize;
-    let mut accepted_entries = 0usize;
-    {
-        let mut guard = stats.lock().unwrap();
-        guard.sessions += 1;
-        guard.watermark = hello.watermark.clone();
-    }
-    // Ack Hello
-    let ack = w::Ack {
-        session_id: hello.session_id.clone(),
-        status: w::AckStatus::Accepted,
-        next_expected_batch: expected_next,
-        accepted_entries,
-        inflight: hello.max_inflight,
-        watermark: hello.watermark.clone(),
-    };
-    write_ack(&mut stream, codec, compression, &ack).await?;
-
-    loop {
-        let (opcode, c, comp, payload) = read_frame(&mut stream).await?;
-        match opcode {
-            2 => {
-                let msg: w::Message<IngestRecord> = decode_message(c, comp, &payload)?;
-                let w::Message::HistoryBatch(batch) = msg else { anyhow::bail!("expected HistoryBatch message payload") };
-                if batch.batch_index != expected_next {
-                    anyhow::bail!(
-                        "unexpected batch index {} (expected {})",
-                        batch.batch_index, expected_next
-                    );
-                }
-                accepted_entries += batch.entries.len();
-                {
-                    let mut guard = stats.lock().unwrap();
-                    if guard.first_record.is_none() {
-                        if let Some(first) = batch.entries.first() {
-                            guard.first_record = Some(first.clone());
-                        }
-                    }
-                    if let Some(last) = batch.entries.last() {
-                        guard.last_record = Some(last.clone());
-                    }
-                    guard.total_entries += batch.entries.len();
-                }
-
-                expected_next += 1;
-                let ack = w::Ack {
-                    session_id: batch.session_id,
-                    status: w::AckStatus::Accepted,
-                    next_expected_batch: expected_next,
-                    accepted_entries,
-                    inflight: hello.max_inflight,
-                    watermark: None,
-                };
-                write_ack(&mut stream, c, comp, &ack).await?;
+    // Use generic ingest state (works with protobuf)
+    let args: GenericIngestArgs<ImessageRecord> = GenericIngestArgs::new("imessage_v2".into());
+    let state: GenericIngestState<ImessageRecord, VecAccumulator<ImessageRecord>> = GenericIngestState::from_args(args);
+    server::handle_single_connection_with_init(stream, init, state, move |session| {
+        let stats = stats.clone();
+        async move {
+            let mut guard = stats.lock().unwrap();
+            guard.sessions += 1;
+            guard.total_entries += session.total_entries;
+            if guard.first_record.is_none() {
+                if let Some(first) = session.entries.first() { guard.first_record = Some(first.clone()); }
             }
-            3 => {
-                let msg: w::Message<IngestRecord> = decode_message(c, comp, &payload)?;
-                let w::Message::Complete(complete) = msg else { anyhow::bail!("expected Complete message payload") };
-                if complete.final_entries != accepted_entries {
-                    anyhow::bail!(
-                        "final entries mismatch: got {}, expected {}",
-                        complete.final_entries, accepted_entries
-                    );
-                }
-                if complete.final_batches != expected_next {
-                    anyhow::bail!(
-                        "final batches mismatch: got {}, expected {}",
-                        complete.final_batches, expected_next
-                    );
-                }
-                let final_watermark = {
-                    let mut guard = stats.lock().unwrap();
-                    if complete.next_watermark.is_some() {
-                        guard.watermark = complete.next_watermark.clone();
-                    }
-                    guard.watermark.clone()
-                };
-                let ack = w::Ack {
-                    session_id: complete.session_id,
-                    status: w::AckStatus::Completed,
-                    next_expected_batch: expected_next,
-                    accepted_entries,
-                    inflight: hello.max_inflight,
-                    watermark: final_watermark,
-                };
-                write_ack(&mut stream, c, comp, &ack).await?;
-                break;
-            }
-            4 => {
-                let msg: w::Message<IngestRecord> = decode_message(c, comp, &payload)?;
-                let w::Message::Abort(abort) = msg else { anyhow::bail!("expected Abort message payload") };
-                anyhow::bail!("client aborted: {}", abort.message);
-            }
-            other => anyhow::bail!("unexpected opcode {}", other),
+            if let Some(last) = session.entries.last() { guard.last_record = Some(last.clone()); }
+            guard.watermark = session
+                .watermark_token
+                .clone()
+                .or_else(|| session.watermark_time.map(|dt| dt.to_rfc3339()));
+            Ok(())
         }
-    }
-    Ok(())
+    })
+    .await
 }
 
-const FRAME_MAGIC: u32 = 0x4950_4752; // "IPGR"
-const FRAME_HEADER_LEN: usize = 12;
-
-async fn read_frame(
-    stream: &mut tokio::net::UnixStream,
-) -> anyhow::Result<(u16, Codec, Compression, Vec<u8>)> {
-    use tokio::io::AsyncReadExt;
-    let mut header = [0u8; FRAME_HEADER_LEN];
-    stream.read_exact(&mut header).await?;
-    let magic = u32::from_be_bytes([header[0], header[1], header[2], header[3]]);
-    if magic != FRAME_MAGIC {
-        anyhow::bail!("invalid frame magic {:x}", magic);
-    }
-    let opcode = u16::from_be_bytes([header[4], header[5]]);
-    let codec = match header[6] { 0 => Codec::Json, 1 => Codec::Binary, 2 => Codec::Protobuf, other => anyhow::bail!("unknown codec {}", other) };
-    let compression = match header[7] { 0 => Compression::None, 1 => Compression::Zstd, other => anyhow::bail!("unknown compression {}", other) };
-    let len = u32::from_be_bytes([header[8], header[9], header[10], header[11]]) as usize;
-    let mut payload = vec![0u8; len];
-    stream.read_exact(&mut payload).await?;
-    Ok((opcode, codec, compression, payload))
-}
-
-async fn write_ack(
-    stream: &mut tokio::net::UnixStream,
-    codec: Codec,
-    compression: Compression,
-    ack: &w::Ack,
-) -> anyhow::Result<()> {
-    use tokio::io::AsyncWriteExt;
-    let payload = encode_payload(codec, compression, ack)?;
-    let mut header = [0u8; FRAME_HEADER_LEN];
-    header[0..4].copy_from_slice(&FRAME_MAGIC.to_be_bytes());
-    header[4..6].copy_from_slice(&5u16.to_be_bytes()); // Ack opcode
-    header[6] = codec as u8;
-    header[7] = compression as u8;
-    header[8..12].copy_from_slice(&(payload.len() as u32).to_be_bytes());
-    stream.write_all(&header).await?;
-    stream.write_all(&payload).await?;
-    Ok(())
-}
-
-// No custom write_init; server::send_init_frame handles Init framing
-
-fn encode_payload(value_codec: Codec, value_compression: Compression, value: &impl serde::Serialize) -> anyhow::Result<Vec<u8>> {
-    let bytes = match value_codec {
-        Codec::Json => serde_json::to_vec(value)?,
-        Codec::Binary => postcard::to_allocvec(value)?,
-        Codec::Protobuf => anyhow::bail!("protobuf codec is not supported for this record type"),
-    };
-    let out = match value_compression {
-        Compression::None => bytes,
-        Compression::Zstd => zstd::stream::encode_all(bytes.as_slice(), 0)?,
-    };
-    Ok(out)
-}
-
-fn decode_payload<T: serde::de::DeserializeOwned>(payload_codec: Codec, payload_compression: Compression, data: &[u8]) -> anyhow::Result<T> {
-    let decompressed = match payload_compression {
-        Compression::None => data.to_vec(),
-        Compression::Zstd => zstd::stream::decode_all(data)?,
-    };
-    let value = match payload_codec {
-        Codec::Json => serde_json::from_slice(&decompressed)?,
-        Codec::Binary => postcard::from_bytes(&decompressed)?,
-        Codec::Protobuf => anyhow::bail!("protobuf codec is not supported for this record type"),
-    };
-    Ok(value)
-}
-
-fn decode_message<T: serde::de::DeserializeOwned>(codec: Codec, compression: Compression, data: &[u8]) -> anyhow::Result<w::Message<T>> {
-    let decompressed = match compression {
-        Compression::None => data.to_vec(),
-        Compression::Zstd => zstd::stream::decode_all(data)?,
-    };
-    let msg = match codec {
-        Codec::Json => serde_json::from_slice(&decompressed)?,
-        Codec::Binary => postcard::from_bytes(&decompressed)?,
-        Codec::Protobuf => anyhow::bail!("protobuf codec not supported in example server"),
-    };
-    Ok(msg)
-}
 
 fn run_imessage_exporter() -> anyhow::Result<()> {
     let status = Command::new("cargo")
@@ -363,11 +181,6 @@ fn run_imessage_exporter() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn print_record(label: &str, record: &IngestRecord, reconstruct: bool) {
-    if reconstruct {
-        let message: Message = record.clone().into();
-        println!("{label} GUID={} text={:?}", message.guid, message.text);
-    } else {
-        println!("{label} GUID={} text={:?}", record.guid, record.text);
-    }
+fn print_record(label: &str, record: &ImessageRecord, _reconstruct: bool) {
+    println!("{label} GUID={} text={:?}", record.guid, record.text);
 }

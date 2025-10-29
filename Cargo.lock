@@ -636,8 +636,10 @@ dependencies = [
 name = "ingest_models"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "prost",
  "prost-build",
+ "prost-types",
  "protoc-bin-vendored",
  "serde",
 ]
@@ -726,14 +728,16 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "ingest_models",
  "ingest_protocol",
- "postcard",
+ "prost",
+ "prost-build",
+ "protoc-bin-vendored",
  "serde",
  "serde_json",
  "tempfile",
  "tokio",
  "uuid",
- "zstd",
 ]
 
 [[package]]

@@ -4,8 +4,8 @@ fn main() {
     std::env::set_var("PROTOC", protoc);
 
     let mut config = prost_build::Config::new();
-    // Derive serde + Default for generated types to satisfy WireRecord bounds
-    config.type_attribute(".", "#[derive(serde::Serialize, serde::Deserialize, Default)]");
+    // Derive serde for generated types to satisfy WireRecord bounds
+    config.type_attribute(".", "#[derive(serde::Serialize, serde::Deserialize)]");
     // Keep package module paths
     config.compile_protos(
         &["protos/imessage_record.proto"],
